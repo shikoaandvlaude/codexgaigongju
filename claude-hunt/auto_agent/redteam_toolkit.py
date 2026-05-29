@@ -98,6 +98,12 @@ class RedTeamToolkit:
         s.gophish = GoPhishManager(kb)
         s.evilginx = EvilGinxManager(kb)
         s.set = SETManager(kb)
+        # OSINT 深度
+        s.usernames = UsernameStalker(kb)
+        s.phone = PhoneOSINT(kb)
+        s.email_osint = EmailOSINT(kb)
+        s.zphisher = ZphisherKit(kb)
+        s.recon = AdvancedRecon(kb)
 
     def hw_chain(s, subnet, dc="", domain="", user="", pw=""):
         """HW一条龙: 扫描→喷洒→横向→域控"""
@@ -269,3 +275,61 @@ class SETManager:
             f"airbase-ng -e '{ssid}' -c 6 {interface} 2>&1 &; sleep 3 && echo 'AP started: {ssid}'",
             timeout=15
         )
+
+
+
+# ═══════════════════════════════════════════════════════════
+# OSINT 增强 — Sherlock/Maigret/PhoneInfoga/Holehe/Zphisher
+# ═══════════════════════════════════════════════════════════
+
+class UsernameStalker:
+    """用户名跨平台追踪"""
+    def __init__(s, kb): s.kb = kb
+    def sherlock(s, username):
+        return s.kb.run(f"sherlock {username} --print-found 2>&1|head -60", timeout=120)
+    def maigret(s, username):
+        return s.kb.run(f"maigret {username} --no-color 2>&1|head -80", timeout=180)
+    def install_all(s):
+        return s.kb.run("pip3 install sherlock-project maigret 2>&1|tail -5", timeout=120)
+
+class PhoneOSINT:
+    """手机号情报"""
+    def __init__(s, kb): s.kb = kb
+    def scan(s, phone):
+        return s.kb.run(f"phoneinfoga scan -n {phone} 2>&1|head -40", timeout=30)
+    def install(s):
+        return s.kb.run("curl -sSL https://raw.githubusercontent.com/sundowndev/phoneinfoga/master/support/scripts/install|bash 2>&1|tail -5", timeout=60)
+
+class EmailOSINT:
+    """邮箱情报"""
+    def __init__(s, kb): s.kb = kb
+    def holehe(s, email):
+        return s.kb.run(f"holehe {email} --no-color 2>&1|grep '\\[+\\]'|head -30", timeout=60)
+    def check_breach(s, email):
+        return s.kb.run(f"curl -s 'https://haveibeenpwned.com/api/v3/breachedaccount/{email}' -H 'User-Agent:BaiAgent'|head -20", timeout=15)
+    def install(s):
+        return s.kb.run("pip3 install holehe 2>&1|tail -3", timeout=60)
+
+class ZphisherKit:
+    """30+ 钓鱼模板一键生成"""
+    def __init__(s, kb): s.kb = kb
+    def install(s):
+        return s.kb.run("cd /opt && git clone --depth 1 https://github.com/htr-tech/zphisher 2>&1|tail -3", timeout=60)
+    def list_templates(s):
+        return s.kb.run("ls /opt/zphisher/.sites/ 2>/dev/null||echo 'not installed'", timeout=5)
+    def templates(s):
+        return ["facebook","instagram","google","microsoft","twitter","github","steam","netflix","paypal","linkedin","wordpress","discord","tiktok","snapchat","yahoo","twitch","xbox","spotify","adobe","vk"]
+
+class AdvancedRecon:
+    """综合人员/公司侦察"""
+    def __init__(s, kb): s.kb = kb
+    def full_person(s, username="", email="", phone=""):
+        r = {}
+        if username: r["accounts"] = s.kb.run(f"sherlock {username} --print-found 2>&1|head -30", timeout=120)
+        if email: r["sites"] = s.kb.run(f"holehe {email} --no-color 2>&1|grep '\\[+\\]'|head -20", timeout=60)
+        if phone: r["phone"] = s.kb.run(f"phoneinfoga scan -n {phone} 2>&1|head -20", timeout=30)
+        return r
+    def full_company(s, domain):
+        return {"harvest": s.kb.run(f"theHarvester -d {domain} -b bing,google,linkedin -l 100 2>&1|tail -40", timeout=120),
+                "whois": s.kb.run(f"whois {domain}|grep -i 'name\\|email\\|phone'|head -10", timeout=15),
+                "dns": s.kb.run(f"dig {domain} any +short", timeout=10)}
