@@ -36,6 +36,8 @@ Web3 Smart Contract Audit Runner — 统一入口
 import argparse
 import json
 import os
+import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -368,7 +370,31 @@ def main():
         print(f"  Auditing: {name}")
         print(f"{'─'*40}")
 
-        # Phase 1: Auditor
+        # Phase 0: Slither (if available and target is a file)
+        if args.file and shutil.which("slither"):
+            print(f"  [Slither] Running static analysis...")
+            try:
+                slither_out = Path(f"/tmp/slither_{name}.json")
+                slither_cmd = f"slither {args.file} --json {slither_out} 2>/dev/null"
+                subprocess.run(slither_cmd, shell=True, timeout=120, capture_output=True)
+                if slither_out.exists():
+                    slither_data = json.loads(slither_out.read_text())
+                    detectors = slither_data.get("results", {}).get("detectors", [])
+                    high_med = [d for d in detectors if d.get("impact") in ("High", "Medium")]
+                    print(f"  [Slither] Found {len(detectors)} issues ({len(high_med)} High/Medium)")
+                    # Feed high findings into GPTLens context
+                    if high_med:
+                        slither_context = "\n".join(
+                            f"- [{d['impact']}] {d['check']}: {d['description'][:100]}"
+                            for d in high_med[:5]
+                        )
+                        code = f"// Slither findings (verify these):\n// {slither_context}\n\n{code}"
+            except Exception as e:
+                print(f"  [Slither] Skipped: {e}")
+        elif shutil.which("slither"):
+            print(f"  [Slither] Skipped (only runs on --file mode)")
+
+        # Phase 1: Auditor (GPTLens)
         findings = audit_contract(code, args)
 
         # Phase 2: Critic (unless --quick)
