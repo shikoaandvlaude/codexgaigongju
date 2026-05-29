@@ -480,3 +480,59 @@ def _save():
             "mobsf": {"installed": bool(os.environ.get("MOBSF_API_KEY")), "install": "docker run -p 8000:8000 opensecurity/mobile-security-framework-mobsf"},
         }
         return tools
+
+
+    # ═══════════════════════════════════════════════════════════
+    # 11. FOFA — 网络空间测绘（资产发现神器）
+    # ═══════════════════════════════════════════════════════════
+
+    def fofa_search(self, query: str, size: int = 100, fields: str = "host,ip,port,title,server") -> dict:
+        """
+        FOFA 搜索 — 找目标的所有互联网资产。
+        需要: export FOFA_EMAIL=xxx && export FOFA_KEY=xxx
+        """
+        import requests, base64
+        email = os.environ.get("FOFA_EMAIL", "")
+        key = os.environ.get("FOFA_KEY", "")
+        if not email or not key:
+            return {"error": "需要: export FOFA_EMAIL=xxx && export FOFA_KEY=xxx\n注册: https://fofa.info"}
+        q_base64 = base64.b64encode(query.encode()).decode()
+        url = f"https://fofa.info/api/v1/search/all?email={email}&key={key}&qbase64={q_base64}&size={size}&fields={fields}"
+        try:
+            resp = requests.get(url, timeout=30)
+            data = resp.json()
+            if data.get("error"): return {"error": data.get("errmsg", "FOFA error")}
+            results = data.get("results", [])
+            field_list = fields.split(",")
+            parsed = [dict(zip(field_list, row)) for row in results]
+            return {"tool": "fofa", "query": query, "total": data.get("size", 0), "results": parsed, "count": len(parsed)}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def fofa_domain(self, domain, size=200):
+        """搜某域名所有资产"""
+        return self.fofa_search(f'domain="{domain}"', size)
+
+    def fofa_company(self, org, size=200):
+        """搜某公司所有资产"""
+        return self.fofa_search(f'org="{org}"', size)
+
+    def fofa_cert(self, keyword, size=200):
+        """证书关联找隐藏资产"""
+        return self.fofa_search(f'cert="{keyword}"', size)
+
+    def fofa_find_admin(self, domain):
+        """找后台"""
+        return self.fofa_search(f'domain="{domain}" && (title="admin" || title="后台" || title="管理" || title="login")', 50)
+
+    def fofa_find_api(self, domain):
+        """找 API/Swagger"""
+        return self.fofa_search(f'domain="{domain}" && (title="swagger" || body="openapi" || title="api")', 50)
+
+    def fofa_find_test_env(self, domain):
+        """找测试/开发环境"""
+        return self.fofa_search(f'domain="{domain}" && (host="test." || host="dev." || host="staging." || host="uat.")', 50)
+
+    def fofa_icon_hash(self, icon_hash, size=100):
+        """图标 hash 找同类站"""
+        return self.fofa_search(f'icon_hash="{icon_hash}"', size)
