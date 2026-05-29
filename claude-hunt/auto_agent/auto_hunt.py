@@ -501,7 +501,8 @@ def run_agent(target, mode, config):
                          f"（线索已保存，不会丢失）[/yellow]")
 
         # ═══ 赏金不收过滤（防止提交垃圾报告）═══
-        brf = BountyRejectionFilter(platform="hackerone")
+        bounty_platform = config.get('target', {}).get('bounty_platform', 'hackerone')
+        brf = BountyRejectionFilter(platform=bounty_platform)
         if findings.get('vulnerabilities'):
             before_bounty = len(findings['vulnerabilities'])
             findings['vulnerabilities'], bounty_rejected = brf.filter_findings(findings['vulnerabilities'])

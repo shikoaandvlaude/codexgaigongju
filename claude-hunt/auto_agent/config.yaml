@@ -70,6 +70,9 @@ idor:
 target:
   domain: ""
   company_name: ""
+  # 赏金平台: hackerone / cn_src (补天/漏洞盒子/厂商SRC)
+  # 不同平台过滤规则不同：国内收信息泄露/弱口令/短信轰炸，H1不收
+  bounty_platform: "cn_src"
   scope:
     - "*.example.com"
   out_of_scope:
