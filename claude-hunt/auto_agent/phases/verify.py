@@ -12,6 +12,14 @@ Verify Phase — 漏洞深度验证阶段（四证齐全）
 
 from .base import BasePhase
 
+try:
+    from lead_collector import LeadCollector
+except ImportError:
+    try:
+        from ..lead_collector import LeadCollector
+    except ImportError:
+        LeadCollector = None
+
 
 class VerifyPhase(BasePhase):
     """漏洞深度验证：四证齐全 + 反证检查"""
@@ -186,7 +194,44 @@ URL: {vuln.get('url')}
                 vuln["verified_4proof"] = False
                 vuln["needs_manual_verify"] = True
                 phase_findings["vulnerabilities"].append(vuln)
+
+                # Lead mode: 保存为待测线索
+                if LeadCollector:
+                    lead_config = self.engine.config.get("lead_mode", {})
+                    if lead_config.get("enabled", True):
+                        lc = LeadCollector(self.engine.config)
+                        lc.add_lead(
+                            category="POTENTIAL_CHAIN",
+                            url=vuln.get("url", ""),
+                            summary=f"[UNCERTAIN] {vuln.get('type', '?')}: 四证未齐全",
+                            detail=f"代码证明: {code_proof[:100]}... 反证: {counter[:100]}...",
+                            evidence=vuln.get("detail", ""),
+                            severity_hint=vuln.get("severity", "medium"),
+                            confidence=0.4,
+                            source="verify_phase_uncertain",
+                            test_suggestion="需要手动复现: 执行实际HTTP请求确认响应，补充运行时证据",
+                            requires_auth=True,
+                        )
+                        self.logger.log_event("LEAD_MODE",
+                            f"UNCERTAIN 发现保存为线索: {vuln.get('type')}")
             else:
                 console.print(f"  [red]✗ 判定为误报/证据不足，不出报告[/red]")
+
+                # Lead mode: 即使 LIKELY_FALSE 也保存为低优先级线索
+                if LeadCollector:
+                    lead_config = self.engine.config.get("lead_mode", {})
+                    if lead_config.get("enabled", True):
+                        lc = LeadCollector(self.engine.config)
+                        lc.add_lead(
+                            category="POTENTIAL_CHAIN",
+                            url=vuln.get("url", ""),
+                            summary=f"[LIKELY_FALSE] {vuln.get('type', '?')}: 可能误报但保留",
+                            detail=f"反证: {counter[:200]}",
+                            evidence=vuln.get("detail", ""),
+                            severity_hint="low",
+                            confidence=0.15,
+                            source="verify_phase_rejected",
+                            test_suggestion="可能是误报，但如果与其他线索组合可能有价值",
+                        )
         
         return phase_findings

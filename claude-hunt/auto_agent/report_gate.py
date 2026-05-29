@@ -306,6 +306,13 @@ def seven_question_gate(finding: Any, config: dict | None = None) -> tuple[bool,
 
 
 def filter_reportable_findings(findings: list[Any], config: dict | None = None) -> tuple[list[Any], list[tuple[Any, list[str]]]]:
+    """
+    Apply the 7-question gate to all findings.
+    
+    In lead/explore mode (config.lead_mode.defer_report_gate=True), this function
+    should ONLY be called at the final report generation phase, not during
+    scanning/exploration. The scanning phases use lead_collector instead.
+    """
     kept: list[Any] = []
     rejected: list[tuple[Any, list[str]]] = []
     for finding in findings:
@@ -315,3 +322,31 @@ def filter_reportable_findings(findings: list[Any], config: dict | None = None) 
         else:
             rejected.append((finding, failures))
     return kept, rejected
+
+
+def should_apply_report_gate(config: dict | None, current_phase: str = "") -> bool:
+    """
+    Check if report_gate should be applied in the current context.
+    
+    In lead/explore mode, the gate only applies during the final report phase.
+    During scanning/validation phases, findings are saved as leads instead.
+    
+    Returns True if the gate should be applied (strict mode or report phase).
+    """
+    if not config:
+        return True
+
+    lead_config = config.get("lead_mode", {})
+    if not lead_config.get("enabled", False):
+        return True  # Lead mode disabled → always apply gate
+
+    if not lead_config.get("defer_report_gate", True):
+        return True  # Deferred mode disabled → always apply gate
+
+    report_gate_cfg = config.get("report_gate", {})
+    if report_gate_cfg.get("apply_only_at_report_phase", True):
+        # Only apply during report phase
+        report_phases = ("report", "reportphase", "final", "submission")
+        return current_phase.lower().replace(" ", "").replace("_", "") in report_phases
+
+    return True

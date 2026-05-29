@@ -490,6 +490,80 @@ Keep it under 80 words total."""
 
         return self._stream(prompt, f"Phase Complete → {phase}", max_tokens=140)
 
+    # ── Explore / Lead mode helpers ────────────────────────────────────────────
+    def classify_leads(self, leads_text: str, target: str) -> str:
+        """
+        Explore 模式：让 LLM 对线索做优先级排序和攻击路径建议。
+        不要过滤/拒绝任何线索，只做分类和建议。
+        """
+        if not self.enabled:
+            return ""
+
+        prompt = f"""你是一个精英赏金猎人。目标是 {target}。
+
+以下是当前收集到的所有线索（未经过滤，可能有噪音也可能有金矿）：
+
+{leads_text[:8000]}
+
+你的任务（严格遵守）：
+1. 不要拒绝或丢弃任何线索 — 全部保留
+2. 按"能出赏金的可能性"从高到低排序 TOP 10
+3. 对 TOP 10 每条给出具体的下一步测试方法（curl 命令级别）
+4. 识别可能的 A→B 链式组合（多个低危组合成高危）
+5. 标记哪些需要双账号测试，哪些可以无认证验证
+
+输出格式：
+## TOP 10 高价值线索
+1. [线索ID] 原因... 测试方法...
+...
+
+## 可能的攻击链
+- A + B → C: ...
+
+## 需要双账号的测试
+- ...
+
+## 可以无认证验证的
+- ...
+
+简洁、具体、可操作。不要废话。"""
+
+        return self._stream(prompt, "Lead Classification (Explore Mode)", max_tokens=3000)
+
+    def suggest_next_targets(self, recon_summary: str, findings_summary: str,
+                             target: str, time_remaining_hours: float = 2.0) -> str:
+        """
+        Explore 模式：基于当前侦查结果，建议接下来重点挖哪里。
+        不是让 LLM 说"你应该测XSS"，而是给出精确的端点+方法。
+        """
+        if not self.enabled:
+            return ""
+
+        prompt = f"""你是精英赏金猎人。目标: {target}。剩余时间: {time_remaining_hours}h
+
+当前侦查摘要:
+{recon_summary[:4000]}
+
+当前发现摘要:
+{findings_summary[:4000]}
+
+根据剩余时间和已有发现，告诉我接下来最值得花时间的 5 个方向。
+
+要求:
+- 不要推荐"继续扫nuclei"或"继续跑子域名"这种泛泛而谈
+- 必须给出具体的 URL 路径模式或参数名
+- 优先推荐"需要登录态才能测试"的功能（竞争对手少）
+- 优先推荐"业务逻辑类"漏洞方向（自动化工具找不到的）
+- 每个方向附上为什么觉得这里可能有洞（基于什么信号）
+
+输出格式:
+1. [方向名] - 信号: ... - 建议测试: ... - 预估概率: X%
+2. ...
+
+简洁具体。"""
+
+        return self._stream_fast(prompt, "Next Target Suggestion (Explore)", max_tokens=1500)
+
     # ── Internal streaming helper ──────────────────────────────────────────────
     def _stream_fast(self, user_prompt: str, label: str, max_tokens: int = 1500) -> str:
         """Stream using the fast triage model (BaronLLM if installed)."""

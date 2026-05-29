@@ -28,6 +28,8 @@ from intel_checker import IntelChecker
 from checkpoint_manager import CheckpointManager
 from scope_updater import ScopeUpdater
 from false_positive_filter import FalsePositiveFilter
+from lead_collector import LeadCollector
+from endpoint_classifier import EndpointClassifier
 from phases.recon import ReconPhase
 from phases.params import ParamPhase
 from phases.hunt import HuntPhase
@@ -396,12 +398,105 @@ def run_agent(target, mode, config):
     
     # ═══ 误报过滤 ═══
     if findings.get('vulnerabilities'):
+        # ═══ 线索收集（explore/lead 模式）═══
+        # 在过滤之前，先把所有发现保存为线索
+        lead_config = config.get('lead_mode', {})
+        if lead_config.get('enabled', True):
+            console.print(f"\n{'='*50}")
+            console.print("[bold cyan]线索收集 (Lead Mode)[/bold cyan]")
+            console.print(f"{'='*50}\n")
+
+            lead_collector = LeadCollector(config)
+
+            # 1. 端点语义分类
+            all_urls = findings.get('urls', []) + findings.get('params', [])
+            if all_urls:
+                classifier = EndpointClassifier(config.get('endpoint_classifier', {}))
+                classified = classifier.classify_urls(all_urls[:200])
+
+                # 把高优先级端点加入线索
+                for ep in classifier.get_high_priority_endpoints(30):
+                    if ep.id_params:
+                        for id_info in ep.id_params:
+                            lead_collector.add_biz_object(
+                                url=ep.url, method=ep.method,
+                                id_param=id_info["name"],
+                                id_value=id_info["value"],
+                                source="endpoint_classifier",
+                            )
+                    if ep.permission_level in ("admin", "internal"):
+                        lead_collector.add_auth_boundary(
+                            url=ep.url, method=ep.method,
+                            status_code=403,
+                            source="endpoint_classifier",
+                        )
+
+                # ID 枚举候选
+                idor_candidates = classifier.get_idor_candidates()
+                if idor_candidates:
+                    console.print(f"  [green]发现 {len(idor_candidates)} 个可枚举 ID 端点[/green]")
+
+                console.print(f"  [green]端点分类完成: {len(classified)} 个端点已分类[/green]")
+
+            # 2. 把被误报过滤器要删除的漏洞也存为 lead（不丢弃）
+            fp_filter = FalsePositiveFilter(engine, logger, config)
+            scored_vulns = fp_filter.filter_vulnerabilities(
+                list(findings['vulnerabilities'])
+            )
+            for vuln in scored_vulns:
+                conf = vuln.get('confidence', 80) / 100.0
+                lead_collector.add_lead(
+                    category="PARAM_ANOMALY" if 'param' in vuln.get('type', '').lower()
+                             else "POTENTIAL_CHAIN",
+                    url=vuln.get('url', ''),
+                    summary=f"[{vuln.get('type', '?')}] {vuln.get('detail', '')[:80]}",
+                    detail=vuln.get('detail', ''),
+                    evidence=vuln.get('validation_evidence', ''),
+                    severity_hint=vuln.get('severity', 'medium'),
+                    confidence=conf,
+                    source=vuln.get('source', 'scanner'),
+                )
+
+            # 3. 从 alive_hosts 中收集 401/403 端点作为线索
+            for host in findings.get('alive_hosts', []):
+                if '403' in host or '401' in host:
+                    lead_collector.add_auth_boundary(
+                        url=host.split()[0] if ' ' in host else host,
+                        method="GET", status_code=403,
+                        source="recon",
+                    )
+
+            # 4. 保存线索和待测清单
+            leads_file = lead_collector.save(target)
+            summary = lead_collector.get_summary()
+            console.print(f"  [bold]线索汇总: {summary['total']} 条[/bold]")
+            for cat, count in summary.get('by_category', {}).items():
+                console.print(f"    {cat}: {count}")
+            console.print(f"  [green]线索已保存: {leads_file}[/green]")
+
+            # 5. 生成待测清单文本
+            test_plan = lead_collector.generate_test_plan_text()
+            plan_path = os.path.join(
+                os.path.expanduser(lead_config.get('storage_dir', '~/.bai-agent/leads')),
+                f"test_plan_{target}.md"
+            )
+            from pathlib import Path as _Path
+            _Path(plan_path).parent.mkdir(parents=True, exist_ok=True)
+            _Path(plan_path).write_text(test_plan, encoding='utf-8')
+            console.print(f"  [green]待测清单: {plan_path}[/green]")
+
+            logger.log_event("LEAD_MODE",
+                f"线索收集完成: {summary['total']} 条线索, "
+                f"待测清单: {plan_path}")
+
+        # 现在应用严格过滤（report_gate 只在这里生效）
         fp_filter = FalsePositiveFilter(engine, logger, config)
         original_count = len(findings['vulnerabilities'])
         findings['vulnerabilities'] = fp_filter.apply_filter(findings['vulnerabilities'], mode)
         filtered_count = original_count - len(findings['vulnerabilities'])
         if filtered_count > 0:
-            console.print(f"\n[yellow]误报过滤: 移除了 {filtered_count} 个可疑误报[/yellow]")
+            console.print(f"\n[yellow]误报过滤: 移除了 {filtered_count} 个可疑误报"
+                         f"（线索已保存，不会丢失）[/yellow]")
     
     # ═══ 提交前情报查重 ═══
     vulns = [v for v in findings.get('vulnerabilities', []) if v.get('verified_4proof')]

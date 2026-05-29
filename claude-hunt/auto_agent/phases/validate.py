@@ -10,6 +10,14 @@ except ImportError:
     except ImportError:
         FalsePositiveFilter = None
 
+try:
+    from lead_collector import LeadCollector
+except ImportError:
+    try:
+        from ..lead_collector import LeadCollector
+    except ImportError:
+        LeadCollector = None
+
 
 class ValidatePhase(BasePhase):
     """Validate candidate findings with FP filtering and AI 7-question review."""
@@ -24,11 +32,54 @@ class ValidatePhase(BasePhase):
             self.logger.log_event("SKIP", "No vulnerabilities to validate")
             return phase_findings
 
+        # ═══ Lead mode: 验证阶段不丢弃线索 ═══
+        config = self.engine.config
+        lead_config = config.get("lead_mode", {})
+        defer_report_gate = lead_config.get("defer_report_gate", True)
+        lead_collector = None
+        if LeadCollector and lead_config.get("enabled", True):
+            lead_collector = LeadCollector(config)
+
         if FalsePositiveFilter:
-            fp_filter = FalsePositiveFilter(self.engine, self.logger, self.engine.config)
+            fp_filter = FalsePositiveFilter(self.engine, self.logger, config)
             before_count = len(vulns)
-            vulns = fp_filter.apply_filter(vulns, self.mode)
-            filtered_count = before_count - len(vulns)
+
+            if defer_report_gate:
+                # Explore 模式：只打分不过滤，低分的存为 lead
+                fp_filter.filter_vulnerabilities(vulns)
+                threshold = fp_filter.auto_threshold
+                kept = []
+                deferred = []
+                for vuln in vulns:
+                    if vuln.get("confidence", 80) < threshold:
+                        deferred.append(vuln)
+                    else:
+                        kept.append(vuln)
+                # 保存被推迟的为 lead（不丢弃）
+                if lead_collector and deferred:
+                    for vuln in deferred:
+                        lead_collector.add_lead(
+                            category="POTENTIAL_CHAIN",
+                            url=vuln.get("url", ""),
+                            summary=f"[低置信度] {vuln.get('type', '?')}: {vuln.get('detail', '')[:60]}",
+                            detail=vuln.get("detail", ""),
+                            evidence=vuln.get("validation_evidence", vuln.get("evidence", "")),
+                            severity_hint=vuln.get("severity", "low"),
+                            confidence=vuln.get("confidence", 0) / 100.0,
+                            source="validate_phase_deferred",
+                            test_suggestion="需要更多证据验证，考虑双账号测试或手动复现",
+                        )
+                    self.logger.log_event(
+                        "LEAD_MODE",
+                        f"验证阶段: {len(deferred)} 个低置信度发现保存为线索（不丢弃）",
+                    )
+                vulns = kept
+                filtered_count = before_count - len(vulns)
+            else:
+                # 严格模式：正常过滤
+                vulns = fp_filter.apply_filter(vulns, self.mode)
+                filtered_count = before_count - len(vulns)
+
             if filtered_count:
                 self.logger.log_event(
                     "SKIP",

@@ -191,7 +191,12 @@ class DeepHuntPhase(BasePhase):
                     "reproduction_attempts": deep_config.get("reproduction_attempts", 3),
                 })
 
+                # Lead mode: 保存未通过验证的为线索
+                lead_config = config.get("lead_mode", {})
+                defer_gate = lead_config.get("defer_report_gate", True)
+
                 verified = []
+                unverified_leads = []
                 for vuln in phase_findings["vulnerabilities"]:
                     result = await validator.validate(vuln)
                     
@@ -212,13 +217,28 @@ class DeepHuntPhase(BasePhase):
                             f"    [dim]✗ {vuln.get('type', '?')}: "
                             f"验证未通过 — {result.evidence[:60]}[/dim]"
                         )
+                        # Lead mode: 保存为待测线索而不是丢弃
+                        if defer_gate:
+                            unverified_leads.append(vuln)
 
-                # 只保留验证通过的
-                phase_findings["vulnerabilities"] = verified
-                console.print(
-                    f"\n  [bold]验证结果: {len(verified)} 个确认 "
-                    f"/ {len(phase_findings['vulnerabilities'])} 个总发现[/bold]"
-                )
+                # Lead mode: 把未验证的也保留在结果中（标记为未验证）
+                if defer_gate and unverified_leads:
+                    for vuln in unverified_leads:
+                        vuln["deep_validated"] = False
+                        vuln["needs_manual_verify"] = True
+                    # 验证通过的 + 未验证但保留的
+                    phase_findings["vulnerabilities"] = verified + unverified_leads
+                    console.print(
+                        f"\n  [bold]验证结果: {len(verified)} 个确认 + "
+                        f"{len(unverified_leads)} 个保留为待测线索[/bold]"
+                    )
+                else:
+                    # 严格模式：只保留验证通过的
+                    phase_findings["vulnerabilities"] = verified
+                    console.print(
+                        f"\n  [bold]验证结果: {len(verified)} 个确认 "
+                        f"/ {len(phase_findings['vulnerabilities'])} 个总发现[/bold]"
+                    )
 
         except Exception as e:
             console.print(f"  [red]深度挖掘异常: {e}[/red]")
@@ -297,8 +317,10 @@ class DeepHuntPhase(BasePhase):
         return vuln_findings
 
     async def _run_idor_test(self, http_engine, findings, config, console) -> list:
-        """运行系统性 IDOR 测试"""
+        """运行系统性 IDOR 测试（增强版：集成双账号差异测试 + ID自动提取）"""
         from idor_tester import IDORTester
+        from dual_account_tester import DualAccountTester
+        from endpoint_classifier import EndpointClassifier
 
         # 配置双账号
         idor_config = config.get("idor", {})
@@ -366,6 +388,66 @@ class DeepHuntPhase(BasePhase):
 
         console.print(f"    [bold]IDOR 测试完成: 发现 {len(vuln_findings)} 个[/bold]")
         self.logger.log_event("FINDING", f"IDOR测试发现 {len(vuln_findings)} 个")
+
+        # ═══ 增强: 双账号系统性差异测试 ═══
+        if cookie_a_str and cookie_b_str:
+            console.print(f"\n    [cyan]运行双账号系统性差异测试...[/cyan]")
+
+            dual_tester = DualAccountTester(http_engine, {
+                "account_a": {"cookies": tester_config["cookie_a"]},
+                "account_b": {"cookies": tester_config["cookie_b"]},
+            })
+
+            # 先用端点分类器找出高价值端点
+            all_urls = findings.get("urls", []) + findings.get("params", [])
+            if all_urls:
+                classifier = EndpointClassifier(config.get("endpoint_classifier", {}))
+                classifier.classify_urls(all_urls[:100])
+                high_priority = classifier.get_high_priority_endpoints(20)
+                priority_urls = [ep.url for ep in high_priority if ep.id_params]
+
+                if priority_urls:
+                    console.print(f"    测试 {len(priority_urls)} 个高优先级业务端点...")
+                    dual_results = await dual_tester.test_endpoints(priority_urls)
+
+                    for r in dual_results:
+                        if r.verdict == "idor_confirmed":
+                            vuln_findings.append({
+                                "type": f"IDOR ({r.verdict})",
+                                "url": r.url,
+                                "method": r.method,
+                                "severity": r.severity,
+                                "detail": r.evidence,
+                                "confirmed": True,
+                                "confidence": r.confidence,
+                                "dual_account_tested": True,
+                                "private_data_observed": r.contains_private_data,
+                                "source": "dual_account_tester",
+                            })
+                            console.print(
+                                f"    [green]✓ [CONFIRMED] IDOR @ {r.url[:60]}[/green]"
+                            )
+                        elif r.verdict == "needs_review":
+                            vuln_findings.append({
+                                "type": f"IDOR ({r.verdict})",
+                                "url": r.url,
+                                "method": r.method,
+                                "severity": r.severity,
+                                "detail": r.evidence,
+                                "confirmed": False,
+                                "confidence": r.confidence,
+                                "dual_account_tested": True,
+                                "private_data_observed": r.contains_private_data,
+                                "source": "dual_account_tester",
+                            })
+
+                    summary = dual_tester.get_summary()
+                    console.print(
+                        f"    [bold]双账号测试: {summary['confirmed_idor']} 确认 / "
+                        f"{summary['needs_review']} 待确认 / "
+                        f"{summary['extracted_ids']} 个ID提取[/bold]"
+                    )
+
         return vuln_findings
 
     async def _run_bizlogic_test(self, http_engine, findings, config, console) -> list:

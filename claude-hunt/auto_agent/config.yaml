@@ -91,6 +91,51 @@ scope_updater:
     - "butian"
     - "vulbox"
 
+# ============================================================
+# Lead / Explore 模式（v2.2 新增）
+# 扫描阶段多收集线索，报告阶段严格过滤
+# ============================================================
+lead_mode:
+  enabled: true
+  # lead_gate 阈值（只有低于此值才被当作噪音丢弃，默认极低）
+  noise_threshold: 0.05
+  # 最大线索数
+  max_leads: 500
+  # 是否自动分类端点
+  auto_classify: true
+  # 线索存储目录
+  storage_dir: "~/.bai-agent/leads"
+  # 自动生成待测清单
+  generate_test_plan: true
+  # 探索阶段不应用 report_gate（只在最终报告时应用）
+  defer_report_gate: true
+  # H1 / SRC 合规
+  hackerone_compliance:
+    # 自动添加 X-HackerOne-Research 头
+    add_research_header: true
+    research_header_value: "X-HackerOne-Research: your-h1-username"
+    # scope 检查（所有请求必须在 scope 内）
+    enforce_scope: true
+    # 禁止在生产环境暴力破解
+    no_bruteforce_production: true
+    # UAT 发现必须在生产可复现才计入报告
+    require_prod_reproduction: true
+
+# 端点语义分类
+endpoint_classifier:
+  enabled: true
+  # 高优先级业务功能（这些功能的端点优先测试）
+  high_priority_functions:
+    - "billing"
+    - "auth"
+    - "role"
+    - "invite"
+    - "user"
+  # ID 枚举范围限制
+  max_enum_range: 100
+  # 自动识别认证不一致
+  detect_auth_inconsistency: true
+
 # 误报过滤
 false_positive_filter:
   enabled: true
@@ -124,6 +169,9 @@ validation:
 
 report_gate:
   enabled: true
+  # 重要：report_gate 只在最终报告阶段生效
+  # 探索/扫描阶段使用 lead_mode 收集线索，不会被 report_gate 过早杀死
+  apply_only_at_report_phase: true
   min_reproduction_count: 2
   require_impact: true
   require_evidence: true
