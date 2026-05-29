@@ -262,11 +262,25 @@ const PRECISE_RULES = {
       name: "用户可控 URL 存在 SSRF 风险",
       severity: "critical",
       minConfidence: 0.85,
-      requireA: /\b(?:fetch|axios|request|http\.get|http\.post|got)\s*\([^;\n]*(?:req\.|(?:req\.)?(?:params|query|body)\.)/i,
-      requireB: /\b(url|link|href|src|target|callback|webhook|redirect)\b/i,
-      exclude: /\b(validate|whitelist|allowed|isLocal|isPrivateHost|isInternal)\b/i,
-      pathFilter: /(controller|service|proxy)/i,
-      evidence: "允许用户控制 URL 进行网络请求"
+      // Improved: match fetch/axios/request/http.get with user input in URL position
+      // Covers: fetch(req.query.url), axios.get(req.body.callback), http.get(url) where url = req.query.x
+      requireA: /\b(?:fetch|axios(?:\.(?:get|post|put|delete|request))?|request|got|http\.(?:get|request)|urllib\.request)\s*\(/i,
+      requireB: /\b(?:req\.|(?:req\.)?(?:params|query|body)\.|url|link|href|callback|webhook|redirect|target|endpoint)\b/i,
+      exclude: /\b(validateUrl|isValidUrl|whitelist|allowedHosts|allowedDomains|isLocal|isPrivateHost|isInternal|blockPrivateIp|urlValidator)\b/i,
+      pathFilter: /(controller|service|proxy|route|handler|middleware|api)/i,
+      evidence: "允许用户控制 URL 进行网络请求，未发现 URL 白名单或内网地址过滤"
+    },
+    {
+      id: "sr-fetch-2",
+      name: "URL 参数直接用于 HTTP 请求",
+      severity: "critical",
+      minConfidence: 0.88,
+      // Catches the specific pattern: fetch(variable) where variable comes from req
+      requireA: /(?:(?:const|let|var)\s+\w+\s*=\s*(?:req\.|(?:req\.)?(?:params|query|body)\.)[\w.[\]]+[\s\S]{0,100}\b(?:fetch|axios|request|got|http)\s*\()|(?:\b(?:fetch|axios|request|got)\s*\(\s*(?:req\.|(?:req\.)?(?:params|query|body)\.))/i,
+      requireB: /./,
+      exclude: /\b(validateUrl|whitelist|allowedHosts|isPrivate|blockInternal)\b/i,
+      pathFilter: /(controller|service|proxy|route|handler|api)/i,
+      evidence: "URL 直接从请求参数获取后用于发起 HTTP 请求"
     }
   ],
 
@@ -317,11 +331,24 @@ const PRECISE_RULES = {
       name: "反射型 XSS 风险",
       severity: "high",
       minConfidence: 0.8,
-      requireA: /(?:\bres\.(?:send|render)\s*\([^;\n]*(?:req\.|(?:req\.)?(?:params|query|body)\.)|(?:innerHTML|outerHTML)\s*=\s*[^;\n]*(?:req\.|(?:req\.)?(?:params|query|body)\.))/i,
+      // Fixed: requireA now requires res.send/render with req input in the SAME expression
+      // OR innerHTML/outerHTML assigned from req input (not just co-existing in same file)
+      requireA: /(?:\bres\.(?:send|write|end)\s*\([^;\n]{0,120}(?:req\.|(?:req\.)?(?:params|query|body)\.)|(?:innerHTML|outerHTML)\s*=\s*[^;\n]{0,80}(?:req\.|(?:req\.)?(?:params|query|body)\.))/i,
       requireB: /./,
-      exclude: /\b(escape|encode|sanitize|xss|escapeHtml|textContent)\b/i,
-      pathFilter: /(controller|route|view)/i,
-      evidence: "用户输入未经过滤直接输出到页面"
+      exclude: /\b(escape|encode|sanitize|xss|escapeHtml|textContent|DOMPurify|createTextNode|encodeURI)\b/i,
+      pathFilter: /(controller|route|view|handler|api)/i,
+      evidence: "用户输入未经过滤直接输出到响应体"
+    },
+    {
+      id: "xs-render-1",
+      name: "模板渲染 XSS 风险",
+      severity: "high",
+      minConfidence: 0.8,
+      requireA: /\bres\.render\s*\([^)]*,\s*\{[^}]*(?:req\.|(?:req\.)?(?:params|query|body)\.)/i,
+      requireB: /./,
+      exclude: /\b(escape|encode|sanitize|xss|escapeHtml)\b/i,
+      pathFilter: /(controller|route|view|handler)/i,
+      evidence: "模板渲染时直接传入用户输入变量"
     },
     {
       id: "xs-vue-1",
@@ -343,9 +370,11 @@ const PRECISE_RULES = {
       name: "Eval 不安全使用",
       severity: "critical",
       minConfidence: 0.95,
+      // Fixed: requireA must match eval() with req input IN the same call expression
+      // Old regex had alternation that matched params./body. independently
       requireA: /\beval\s*\(\s*(?:req\.|(?:req\.)?(?:params|query|body)\.)/i,
       requireB: /./,
-      pathFilter: /(controller|route|service)/i,
+      pathFilter: /(controller|route|service|handler|api)/i,
       evidence: "eval() 中直接使用用户输入"
     },
     {
@@ -353,10 +382,11 @@ const PRECISE_RULES = {
       name: "不安全的反序列化",
       severity: "critical",
       minConfidence: 0.9,
-      requireA: /\bJSON\.parse\(|yaml\.load\(|pickle\.load\(/i,
-      requireB: /req\.|params\.|body\./,
-      exclude: /\b(safe|loadSilent)\b/i,
-      pathFilter: /(controller|service|middleware)/i,
+      // Fixed: require that parse/load and req input appear in the same statement (within 80 chars)
+      requireA: /\b(?:JSON\.parse|yaml\.load|pickle\.load|unserialize)\s*\([^;\n]{0,80}(?:req\.|(?:req\.)?(?:params|query|body)\.)/i,
+      requireB: /./,
+      exclude: /\b(safe|loadSilent|safeLoad|JSON\.parse\(\s*JSON\.stringify)\b/i,
+      pathFilter: /(controller|service|middleware|handler|api)/i,
       evidence: "反序列化用户输入的数据"
     }
   ],

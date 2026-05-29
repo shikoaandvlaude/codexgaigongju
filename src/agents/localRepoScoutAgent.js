@@ -2,6 +2,11 @@ import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
+// Only skip directories that are clearly NOT source code.
+// IMPORTANT: Do NOT include "tmp" or "temp" here — they block legitimate
+// paths like /tmp/my-project/ when used as the scan root, and some projects
+// legitimately have src/templates/ (contains "temp" substring).
+// The old list had "tmp" and "temp" which caused /tmp/ repos to return 0 files.
 const IGNORED_SEGMENTS = [
   ".git",
   "node_modules",
@@ -11,8 +16,14 @@ const IGNORED_SEGMENTS = [
   ".next",
   ".nuxt",
   "vendor",
-  "tmp",
-  "temp"
+  "__pycache__",
+  ".cache",
+  ".tox",
+  "target",        // Java/Rust build output
+  "out",           // common build output
+  ".venv",
+  "venv",
+  "env",           // Python virtualenv (but not .env files — those are handled by extension filter)
 ];
 
 const CODE_EXTENSIONS = new Set([

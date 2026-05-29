@@ -75,7 +75,9 @@ const INDUSTRY_KEYWORDS = {
   media: ["media", "editorial", "news", "publishing", "magazine"],
   enterprise: ["enterprise", "portal", "workflow", "business"],
   government: ["government", "public sector", "civic", "municipal"],
-  community: ["forum", "community", "member", "social"]
+  community: ["forum", "community", "member", "social"],
+  fintech: ["fintech", "finance", "banking", "payment", "wallet", "transfer", "trading", "kyc", "billing", "invoice", "loan", "insurance", "crypto"],
+  saas: ["saas", "multi-tenant", "workspace", "team", "collaboration", "subscription", "plan"]
 };
 
 const REVIEWABLE_EXTENSIONS = new Set([

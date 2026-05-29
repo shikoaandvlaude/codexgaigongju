@@ -178,6 +178,12 @@ export function suggestSkillIdsForProject(project, baseSkillIds = []) {
     ids.add("access-control");
     ids.add("query-safety");
   }
+  if (/(fintech|finance|banking|trading|kyc|aml|transfer|deposit|ledger|loan|insurance|crypto|exchange)/.test(haystack)) {
+    ids.add("access-control");
+    ids.add("query-safety");
+    ids.add("secret-exposure");
+    ids.add("ssrf");
+  }
   if (/(javascript|typescript|react|vue|next|nuxt|express|koa|nest|node)/.test(haystack)) {
     ids.add("xss");
     ids.add("query-safety");
