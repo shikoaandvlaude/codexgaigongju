@@ -730,6 +730,58 @@ async function buildHeuristicFindings(project, reviewProfile) {
     );
   }
 
+  // ═══ Semgrep 集成（如果可用）═══
+  try {
+    const { execSync } = await import("node:child_process");
+    const semgrepBin = execSync("which semgrep 2>/dev/null", { encoding: "utf8" }).trim();
+    if (semgrepBin) {
+      const semgrepOutput = path.join(sourceRoot, ".semgrep-results.json");
+      try {
+        execSync(
+          `semgrep --config=p/security-audit ${sourceRoot} --json -o ${semgrepOutput} --quiet --timeout 60 2>/dev/null`,
+          { timeout: 120_000 }
+        );
+        const semgrepData = JSON.parse(await fs.readFile(semgrepOutput, "utf8"));
+        const semgrepResults = semgrepData?.results || [];
+        for (const item of semgrepResults.slice(0, 20)) {
+          const severity = item?.extra?.severity === "ERROR" ? "high" : "medium";
+          const ruleId = item?.check_id || "semgrep-rule";
+          const message = item?.extra?.message || "";
+          const filePath = path.relative(sourceRoot, item?.path || "").replaceAll("\\", "/");
+          // Map semgrep rule to our skill IDs
+          let skillId = "query-safety";
+          if (/sql|inject/i.test(ruleId)) skillId = "query-safety";
+          else if (/xss|html/i.test(ruleId)) skillId = "xss";
+          else if (/ssrf|url|fetch/i.test(ruleId)) skillId = "ssrf";
+          else if (/path|traversal|file/i.test(ruleId)) skillId = "path-traversal";
+          else if (/command|exec|shell/i.test(ruleId)) skillId = "command-injection";
+          else if (/secret|key|token|password/i.test(ruleId)) skillId = "secret-exposure";
+          else if (/deserial|eval|yaml/i.test(ruleId)) skillId = "deserialization";
+
+          if (enabledSkills.has(skillId)) {
+            findings.push(createFinding({
+              skillId,
+              title: `[Semgrep] ${ruleId.split(".").pop()}`,
+              severity,
+              confidence: severity === "high" ? 0.82 : 0.7,
+              location: filePath,
+              evidence: message.slice(0, 300),
+              impact: `Semgrep rule ${ruleId} flagged potential ${skillId} issue.`,
+              remediation: item?.extra?.fix || "Review and fix the flagged code pattern.",
+              safeValidation: "Semgrep finding — verify exploitability manually before reporting."
+            }));
+          }
+        }
+        // Clean up
+        await fs.unlink(semgrepOutput).catch(() => {});
+      } catch {
+        // Semgrep run failed — non-fatal
+      }
+    }
+  } catch {
+    // semgrep not installed — skip silently
+  }
+
   // 按置信度排序并限制结果数
   return prioritizeFindings(findings).slice(0, 15);
 }

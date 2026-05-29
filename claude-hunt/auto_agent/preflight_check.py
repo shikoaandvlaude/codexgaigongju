@@ -54,6 +54,7 @@ class PreflightChecker:
         self._check_cookies()
         self._check_target()
         self._check_playwright()
+        self._check_seclists()
 
         # 结果汇总
         print(f"\n{BOLD}{'─'*60}{NC}")
@@ -308,7 +309,50 @@ class PreflightChecker:
         except Exception:
             print(f"    {warn_mark()} Playwright 状态未知")
 
+    def _check_seclists(self):
+        """检查 SecLists 字典"""
+        print(f"\n  {BOLD}字典 (SecLists):{NC}")
+        seclists_paths = [
+            os.path.expanduser("~/SecLists"),
+            "/usr/share/seclists",
+            "/opt/seclists",
+            os.path.expanduser("~/wordlists/SecLists"),
+        ]
+        for sp in seclists_paths:
+            if os.path.exists(os.path.join(sp, "Discovery")):
+                print(f"    {check_mark(True)} SecLists 已安装: {sp}")
+                self.passed.append("SecLists")
+                return
+
+        print(f"    {warn_mark()} SecLists 未安装（ffuf/nuclei 字典不完整）")
+        self.warnings.append(
+            "SecLists 未安装 — git clone --depth 1 https://github.com/danielmiessler/SecLists ~/SecLists"
+        )
+
+        # 尝试自动下载（如果用户传了 --fix）
+        if hasattr(self, '_auto_fix') and self._auto_fix:
+            print(f"    {warn_mark()} 正在自动下载 SecLists...")
+            try:
+                target_dir = os.path.expanduser("~/SecLists")
+                result = subprocess.run(
+                    ["git", "clone", "--depth", "1",
+                     "https://github.com/danielmiessler/SecLists", target_dir],
+                    capture_output=True, text=True, timeout=300
+                )
+                if result.returncode == 0:
+                    print(f"    {check_mark(True)} SecLists 下载完成: {target_dir}")
+                else:
+                    print(f"    {check_mark(False)} 下载失败: {result.stderr[:100]}")
+            except Exception as e:
+                print(f"    {check_mark(False)} 下载异常: {e}")
+
 
 if __name__ == "__main__":
+    import argparse as _ap
+    _parser = _ap.ArgumentParser(description="Preflight Check")
+    _parser.add_argument("--fix", action="store_true", help="尝试自动修复可修复的问题")
+    _args = _parser.parse_args()
+
     checker = PreflightChecker()
+    checker._auto_fix = _args.fix
     checker.check_all()

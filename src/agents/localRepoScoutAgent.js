@@ -26,6 +26,17 @@ const IGNORED_SEGMENTS = [
   "env",           // Python virtualenv (but not .env files — those are handled by extension filter)
 ];
 
+// Directories that indicate this IS our own tool — never audit yourself
+const SELF_AUDIT_MARKERS = [
+  "claude-hunt",
+  "auto_agent",
+  "auditAnalystAgent.js",
+  "localRepoScoutAgent.js",
+  "frameworkScoutAgent.js",
+  "tool_integrator.py",
+  "experience_learner.py",
+];
+
 const CODE_EXTENSIONS = new Set([
   ".ts",
   ".tsx",
@@ -126,6 +137,19 @@ async function inspectLocalPath(localPath) {
   try {
     const stat = await fs.stat(localPath);
     if (!stat.isDirectory()) return null;
+
+    // Self-audit protection: refuse to scan our own tool directory
+    const resolvedPath = path.resolve(localPath);
+    const entries = await fs.readdir(localPath);
+    const markerHits = SELF_AUDIT_MARKERS.filter((marker) => entries.includes(marker));
+    if (markerHits.length >= 2) {
+      // This directory contains multiple markers of our own tool
+      console.warn(
+        `[localRepoScout] 跳过自身目录: ${localPath} (包含 ${markerHits.join(", ")})`
+      );
+      return null;
+    }
+
     const files = await collectRelevantFiles(localPath, { limit: 120 });
     return {
       updatedAt: stat.mtime.toISOString(),

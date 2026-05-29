@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { getProgramQuery } from "../config/programProfiles.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Use the same workspace root as server.js (project_root/workspace/)
 const workspaceDir = path.join(__dirname, "..", "..", "workspace");
 const tasksFile = path.join(workspaceDir, "tasks.json");
 
@@ -144,6 +145,10 @@ export function createTaskStore() {
       const task = memory.get(id);
       if (!task) {
         return null;
+      }
+      // Never overwrite a cancelled task (prevents race with runScout/runAudit)
+      if (task.status === "cancelled" && patch.status && patch.status !== "cancelled") {
+        return task;
       }
       Object.assign(task, patch, { updatedAt: new Date().toISOString() });
       persist();
