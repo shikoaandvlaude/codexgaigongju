@@ -337,6 +337,113 @@ def _save():
         return wordlists.get(category, "")
 
     # ═══════════════════════════════════════════════════════════
+    # 7. kiterunner — API 路由暴力发现
+    # ═══════════════════════════════════════════════════════════
+
+    def run_kiterunner(self, target: str, wordlist: str = None,
+                       output_file: str = None) -> dict:
+        """
+        运行 kiterunner 做 API 路由发现。比 ffuf 更适合 API。
+        安装: go install github.com/assetnote/kiterunner/cmd/kr@latest
+        """
+        if not shutil.which("kr"):
+            return {"error": "kiterunner 未安装。go install github.com/assetnote/kiterunner/cmd/kr@latest"}
+
+        output_file = output_file or os.path.join(self.results_dir, "kiterunner.txt")
+        wl_flag = f"-w {wordlist}" if wordlist else ""
+        cmd = f"kr scan {target} {wl_flag} --fail-status-codes 404,403 -o text 2>&1 | head -100 | tee {output_file}"
+        result = self._run_cmd(cmd, timeout=180)
+
+        endpoints = []
+        if os.path.exists(output_file):
+            endpoints = [l.strip() for l in Path(output_file).read_text().splitlines() if l.strip() and "/" in l]
+
+        return {"tool": "kiterunner", "target": target, "endpoints": endpoints[:50], "count": len(endpoints)}
+
+    # ═══════════════════════════════════════════════════════════
+    # 8. jwt_tool — JWT 深度测试
+    # ═══════════════════════════════════════════════════════════
+
+    def run_jwt_tool(self, token: str, target_url: str = "") -> dict:
+        """
+        JWT 安全测试: alg:none, RS256→HS256, kid injection, jku spoofing
+        安装: git clone https://github.com/ticarpi/jwt_tool ~/jwt_tool
+        """
+        jwt_path = None
+        for p in [os.path.expanduser("~/jwt_tool/jwt_tool.py"), "/opt/jwt_tool/jwt_tool.py"]:
+            if os.path.exists(p):
+                jwt_path = p
+                break
+        if not jwt_path:
+            return {"error": "jwt_tool 未安装。git clone https://github.com/ticarpi/jwt_tool ~/jwt_tool"}
+
+        target_flag = f"-t {target_url}" if target_url else ""
+        cmd = f"python3 {jwt_path} {token} -M at {target_flag} 2>&1 | head -50"
+        result = self._run_cmd(cmd, timeout=60)
+
+        findings = [l for l in result.get("output", "").splitlines()
+                    if any(k in l.upper() for k in ["VULNERABLE", "EXPLOITABLE", "FORGED", "ACCEPTED"])]
+        return {"tool": "jwt_tool", "findings": findings, "vulnerable": len(findings) > 0}
+
+    # ═══════════════════════════════════════════════════════════
+    # 9. Schemathesis — OpenAPI/Swagger 自动 Fuzz
+    # ═══════════════════════════════════════════════════════════
+
+    def run_schemathesis(self, spec_url: str, base_url: str = None, auth_header: str = None) -> dict:
+        """
+        对 OpenAPI spec 做自动 fuzz（所有端点+所有参数+边界值）。
+        安装: pip install schemathesis
+        """
+        st_cmd = shutil.which("st") or shutil.which("schemathesis")
+        if not st_cmd:
+            return {"error": "schemathesis 未安装。pip install schemathesis"}
+
+        output_file = os.path.join(self.results_dir, "schemathesis.txt")
+        auth_flag = f'-H "Authorization: {auth_header}"' if auth_header else ""
+        base_flag = f"--base-url {base_url}" if base_url else ""
+
+        cmd = (f"{st_cmd} run {spec_url} {base_flag} {auth_flag} "
+               f"--checks all --max-response-time 5000 --hypothesis-max-examples 50 "
+               f"2>&1 | tee {output_file}")
+        result = self._run_cmd(cmd, timeout=300)
+
+        failures = [l.strip() for l in result.get("output", "").splitlines()
+                    if "FAILED" in l or "ERROR" in l or "5xx" in l.lower()]
+        return {"tool": "schemathesis", "spec_url": spec_url, "failures": failures[:20], "has_issues": bool(failures)}
+
+    # ═══════════════════════════════════════════════════════════
+    # 10. MobSF — 移动应用静态分析
+    # ═══════════════════════════════════════════════════════════
+
+    def run_mobsf(self, apk_path: str, mobsf_url: str = "http://localhost:8000") -> dict:
+        """
+        调用 MobSF API 做 APK 静态分析。
+        启动: docker run -p 8000:8000 opensecurity/mobile-security-framework-mobsf
+        """
+        import requests
+        api_key = os.environ.get("MOBSF_API_KEY", "")
+        if not api_key:
+            return {"error": "需要 MOBSF_API_KEY。启动 MobSF 后在 REST API 页面获取"}
+
+        headers = {"Authorization": api_key}
+        with open(apk_path, "rb") as f:
+            resp = requests.post(f"{mobsf_url}/api/v1/upload", files={"file": f}, headers=headers, timeout=120)
+        if resp.status_code != 200:
+            return {"error": f"Upload failed: {resp.text[:100]}"}
+
+        scan_hash = resp.json().get("hash", "")
+        requests.post(f"{mobsf_url}/api/v1/scan", data={"hash": scan_hash}, headers=headers, timeout=300)
+        report = requests.post(f"{mobsf_url}/api/v1/report_json", data={"hash": scan_hash}, headers=headers, timeout=60).json()
+
+        return {
+            "tool": "mobsf", "package": report.get("package_name", ""),
+            "score": report.get("security_score", ""),
+            "urls": report.get("urls", [])[:20],
+            "secrets": report.get("secrets", [])[:10],
+            "api_calls": report.get("api", {}).get("api_calls", [])[:20],
+        }
+
+    # ═══════════════════════════════════════════════════════════
     # 内部方法
     # ═══════════════════════════════════════════════════════════
 
@@ -367,5 +474,9 @@ def _save():
             "mitmproxy": {"installed": bool(shutil.which("mitmproxy")), "install": "pip install mitmproxy"},
             "ffuf": {"installed": bool(shutil.which("ffuf")), "install": "go install github.com/ffuf/ffuf/v2@latest"},
             "seclists": {"installed": bool(self.ensure_seclists()), "install": "git clone https://github.com/danielmiessler/SecLists ~/SecLists"},
+            "kiterunner": {"installed": bool(shutil.which("kr")), "install": "go install github.com/assetnote/kiterunner/cmd/kr@latest"},
+            "jwt_tool": {"installed": os.path.exists(os.path.expanduser("~/jwt_tool/jwt_tool.py")), "install": "git clone https://github.com/ticarpi/jwt_tool ~/jwt_tool"},
+            "schemathesis": {"installed": bool(shutil.which("st") or shutil.which("schemathesis")), "install": "pip install schemathesis"},
+            "mobsf": {"installed": bool(os.environ.get("MOBSF_API_KEY")), "install": "docker run -p 8000:8000 opensecurity/mobile-security-framework-mobsf"},
         }
         return tools
