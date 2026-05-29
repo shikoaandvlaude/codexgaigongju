@@ -15,6 +15,14 @@ except ImportError:
     except ImportError:
         filter_reportable_findings = None
 
+try:
+    from h1_report_generator import H1ReportGenerator
+except ImportError:
+    try:
+        from ..h1_report_generator import H1ReportGenerator
+    except ImportError:
+        H1ReportGenerator = None
+
 
 class ReportPhase(BasePhase):
     """Generate SRC-style reports for findings that pass the strict report gate."""
@@ -63,10 +71,20 @@ class ReportPhase(BasePhase):
         return phase_findings
 
     def _generate_report(self, target: str, vuln: dict) -> str:
-        prompt = f"""Write a concise Chinese SRC/HackerOne-style vulnerability report.
+        # Try H1 report generator first (structured, CVSS, proper format)
+        if H1ReportGenerator:
+            try:
+                gen = H1ReportGenerator(target=target)
+                report = gen.generate(vuln)
+                return report.markdown
+            except Exception:
+                pass  # Fall through to LLM-based generation
+
+        prompt = f"""Write a concise HackerOne-style vulnerability report in English.
+Include: Title, CVSS 3.1 score, Summary, Steps to Reproduce (with curl commands),
+Impact, and Recommendations.
 
 Use only the evidence below. Do not invent requests, responses, impact, accounts, or data.
-Avoid theoretical language such as "could/might/可能" unless it is clearly marked as a limitation.
 
 Target: {target}
 Type: {vuln.get('type')}
@@ -77,15 +95,14 @@ Detail: {vuln.get('detail')}
 Evidence: {vuln.get('evidence') or vuln.get('validation_evidence')}
 Reproduction count: {vuln.get('reproduction_count')}
 Validation confidence: {vuln.get('validation_confidence') or vuln.get('confidence')}
-Report gate failures: {vuln.get('report_gate_failures', [])}
 
 Format:
-# 漏洞标题
-## 一、漏洞概述
-## 二、复现步骤
-## 三、证据
-## 四、安全影响
-## 五、修复建议
+# [Vuln Type] at [Endpoint]
+**CVSS 3.1:** X.X (Severity)
+## Summary
+## Steps to Reproduce
+## Impact
+## Recommendations
 """
 
         report = self.engine.think(prompt)
@@ -96,9 +113,10 @@ type: {vuln.get('type')}
 severity: {vuln.get('severity')}
 url: {vuln.get('url')}
 date: {datetime.now().strftime('%Y-%m-%d')}
-agent: Bai Auto-Hunt v1.0
+agent: Bai Auto-Hunt v2.0
 report_gate_passed: {vuln.get('report_gate_passed', True)}
 reproduction_count: {vuln.get('reproduction_count')}
+cvss_score: {vuln.get('cvss_score', 'N/A')}
 ---
 
 """
