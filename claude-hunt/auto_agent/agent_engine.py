@@ -68,7 +68,7 @@ class AgentEngine:
 
 
     def think(self, prompt: str, context: str = "", system_prompt: str = None) -> str:
-        """让 AI 思考/决策"""
+        """让 AI 思考/决策（注入历史经验）"""
         if not system_prompt:
             system_prompt = """你是一个专业的 SRC 漏洞猎人 AI 助手。你的任务是：
 1. 分析目标信息，制定测试计划
@@ -85,6 +85,11 @@ class AgentEngine:
         messages = [
             {"role": "system", "content": system_prompt},
         ]
+        
+        # 注入历史经验（如果有）
+        experience_context = self._get_experience_context()
+        if experience_context:
+            messages.append({"role": "user", "content": experience_context})
         
         if context:
             messages.append({"role": "user", "content": f"当前上下文:\n{context}"})
@@ -228,6 +233,19 @@ URL: {current_findings.get('urls', [])[:20]}
         if elapsed < min_interval:
             time.sleep(min_interval - elapsed)
         self.last_request_time = time.time()
+    
+    def _get_experience_context(self) -> str:
+        """加载历史经验注入 LLM 上下文"""
+        try:
+            from experience_learner import ExperienceLearner
+            learner = ExperienceLearner(self, self.config)
+            target = self.config.get("target", {}).get("domain", "")
+            experience = learner.get_relevant_experience(target)
+            if experience and len(experience) > 50:
+                return experience
+        except Exception:
+            pass
+        return ""
     
     def get_request_count(self) -> int:
         """获取已发送请求数"""

@@ -30,6 +30,7 @@ from scope_updater import ScopeUpdater
 from false_positive_filter import FalsePositiveFilter
 from lead_collector import LeadCollector
 from endpoint_classifier import EndpointClassifier
+from experience_learner import ExperienceLearner
 from phases.recon import ReconPhase
 from phases.params import ParamPhase
 from phases.hunt import HuntPhase
@@ -509,6 +510,71 @@ def run_agent(target, mode, config):
     
     # 写日志尾
     logger.write_footer(findings)
+    
+    # ═══ 自我进化：复盘学习 ═══
+    try:
+        learner = ExperienceLearner(engine, config)
+        console.print(f"\n{'='*50}")
+        console.print("[bold cyan]复盘学习 (Experience Learning)[/bold cyan]")
+        console.print(f"{'='*50}\n")
+
+        # 获取线索摘要（如果有）
+        leads_summary_data = None
+        if lead_config.get('enabled', True):
+            try:
+                lc = LeadCollector(config)
+                leads_summary_data = lc.get_summary() if lc.leads else None
+            except Exception:
+                pass
+
+        # 运行统计
+        import time as _time
+        run_stats = {
+            "total_requests": engine.get_request_count(),
+            "waf_type": waf_result.get("strategy", {}).get("name", "unknown") if 'waf_result' in dir() else "unknown",
+        }
+
+        # 调用 LLM 做复盘
+        review_result = learner.post_hunt_review(
+            target=target,
+            findings=findings,
+            leads_summary=leads_summary_data,
+            run_stats=run_stats,
+        )
+
+        if review_result and not review_result.get("error"):
+            console.print(f"  [green]✓ 复盘完成[/green]")
+            # 显示学到的东西
+            new_patterns = review_result.get("new_patterns", [])
+            if new_patterns:
+                console.print(f"  [bold]学到 {len(new_patterns)} 条新经验:[/bold]")
+                for p in new_patterns[:5]:
+                    console.print(f"    [{p.get('priority', '?')}] {p.get('pattern', '')[:60]}")
+            
+            wasted = review_result.get("wasted_effort", [])
+            if wasted:
+                console.print(f"  [yellow]识别到 {len(wasted)} 个浪费时间的操作（下次避免）[/yellow]")
+
+            skill = review_result.get("skill_suggestion", {})
+            if skill and skill.get("name"):
+                console.print(f"  [cyan]生成新 Skill: {skill['name']}[/cyan]")
+
+            advice = review_result.get("next_time_advice", "")
+            if advice:
+                console.print(f"\n  [bold]下次建议: {advice}[/bold]")
+
+            # 显示经验库统计
+            stats = learner.get_experience_stats()
+            console.print(f"\n  经验库: {stats['total_patterns']} 条模式 / "
+                         f"{stats['generated_skills']} 个 Skill / "
+                         f"{stats['waste_patterns']} 个避免项")
+        else:
+            console.print(f"  [dim]复盘跳过（LLM 未返回有效结果）[/dim]")
+
+        logger.log_event("EXPERIENCE", f"复盘完成: {json.dumps(review_result, ensure_ascii=False)[:200]}")
+
+    except Exception as e:
+        console.print(f"  [dim]复盘异常（不影响主流程）: {e}[/dim]")
     
     # 最终汇总
     console.print(f"\n{'='*50}")
