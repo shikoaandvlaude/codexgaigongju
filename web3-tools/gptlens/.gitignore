@@ -1,0 +1,6 @@
+.idea/*
+.DS_Store
+./data/CVE_label/extract.py
+./data/CVE_label/raw_data.txt
+./src/__pycache__
+.conda
