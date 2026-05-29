@@ -240,17 +240,32 @@ URL: {current_findings.get('urls', [])[:20]}
         self.last_request_time = time.time()
     
     def _get_experience_context(self) -> str:
-        """加载历史经验注入 LLM 上下文"""
+        """加载历史经验 + 行业指南注入 LLM 上下文"""
+        parts = []
+
+        # 1. 行业指南
+        try:
+            from industry_profiles import get_industry_focus_prompt
+            industry = self.config.get("target", {}).get("industry", "")
+            if industry:
+                guide = get_industry_focus_prompt(industry)
+                if guide:
+                    parts.append(guide)
+        except Exception:
+            pass
+
+        # 2. 历史经验
         try:
             from experience_learner import ExperienceLearner
             learner = ExperienceLearner(self, self.config)
             target = self.config.get("target", {}).get("domain", "")
             experience = learner.get_relevant_experience(target)
             if experience and len(experience) > 50:
-                return experience
+                parts.append(experience)
         except Exception:
             pass
-        return ""
+
+        return "\n\n".join(parts) if parts else ""
     
     def get_request_count(self) -> int:
         """获取已发送请求数"""
