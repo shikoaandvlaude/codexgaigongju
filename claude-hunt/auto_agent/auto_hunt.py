@@ -31,6 +31,7 @@ from false_positive_filter import FalsePositiveFilter
 from lead_collector import LeadCollector
 from endpoint_classifier import EndpointClassifier
 from experience_learner import ExperienceLearner
+from bounty_rejection_filter import BountyRejectionFilter
 from phases.recon import ReconPhase
 from phases.params import ParamPhase
 from phases.hunt import HuntPhase
@@ -498,6 +499,18 @@ def run_agent(target, mode, config):
         if filtered_count > 0:
             console.print(f"\n[yellow]误报过滤: 移除了 {filtered_count} 个可疑误报"
                          f"（线索已保存，不会丢失）[/yellow]")
+
+        # ═══ 赏金不收过滤（防止提交垃圾报告）═══
+        brf = BountyRejectionFilter(platform="hackerone")
+        if findings.get('vulnerabilities'):
+            before_bounty = len(findings['vulnerabilities'])
+            findings['vulnerabilities'], bounty_rejected = brf.filter_findings(findings['vulnerabilities'])
+            if bounty_rejected:
+                console.print(f"\n[yellow]赏金过滤: 移除了 {len(bounty_rejected)} 个平台不收的发现:[/yellow]")
+                for r in bounty_rejected[:5]:
+                    console.print(f"    ✗ {r.get('type', '?')}: {r.get('bounty_rejection', {}).get('reason', '')[:60]}")
+                logger.log_event("BOUNTY_FILTER",
+                    f"移除 {len(bounty_rejected)} 个不收的发现（信息泄露/弱配置等）")
     
     # ═══ 提交前情报查重 ═══
     vulns = [v for v in findings.get('vulnerabilities', []) if v.get('verified_4proof')]
