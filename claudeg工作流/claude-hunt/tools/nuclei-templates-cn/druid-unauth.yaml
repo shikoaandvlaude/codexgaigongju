@@ -1,0 +1,38 @@
+id: druid-monitor-unauth
+
+info:
+  name: Alibaba Druid Monitor - Unauthorized Access
+  author: bai-codeagent
+  severity: high
+  description: |
+    Alibaba Druid 数据库连接池监控页面未做访问控制。
+    可泄露SQL执行记录、数据库连接信息、session信息等。
+    常见路径: /druid/index.html, /druid/login.html
+    默认密码: admin/123456 或无密码直接访问
+  tags: druid,unauth,info-leak,cn-cms
+  metadata:
+    cnvd-applicable: true
+    default-credentials: admin/123456
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/druid/index.html"
+      - "{{BaseURL}}/druid/"
+      - "{{BaseURL}}/druid/sql.html"
+      - "{{BaseURL}}/druid/datasource.html"
+      - "{{BaseURL}}/prod-api/druid/index.html"
+      - "{{BaseURL}}/api/druid/index.html"
+
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "Druid Stat"
+          - "DruidStatView"
+          - "druid monitor"
+        condition: or
+      - type: status
+        status:
+          - 200

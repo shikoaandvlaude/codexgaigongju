@@ -1,0 +1,42 @@
+id: shiro-default-key-detect
+
+info:
+  name: Apache Shiro - Default Key Detection (rememberMe)
+  author: bai-codeagent
+  severity: high
+  description: |
+    检测目标是否使用 Apache Shiro 框架（通过 rememberMe cookie 指纹识别）。
+    Shiro 使用硬编码的 AES 密钥进行 rememberMe cookie 加密，存在反序列化RCE漏洞。
+    常见默认Key: kPH+bIxk5D2deZiIxcaaaA==
+  reference:
+    - https://github.com/feihong-cs/ShiroExploit
+  tags: shiro,deserialization,cn-cms
+  metadata:
+    cnvd-applicable: true
+    tool-hint: "使用 ShiroExploit 工具进一步利用"
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}"
+      - "{{BaseURL}}/login"
+      - "{{BaseURL}}/index"
+    headers:
+      Cookie: "rememberMe=test"
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words:
+          - "rememberMe=deleteMe"
+      - type: status
+        status:
+          - 200
+          - 302
+          - 401
+          - 403
+
+    extractors:
+      - type: kval
+        kval:
+          - set_cookie

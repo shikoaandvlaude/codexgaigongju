@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "hermes": {
+      "command": "C:\\Users\\admin\\.hermes\\venv\\Scripts\\python.exe",
+      "args": ["-c", "from mcp_serve import run_mcp_server; run_mcp_server()"]
+    }
+  }
+}

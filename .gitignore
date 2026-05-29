@@ -1,0 +1,19 @@
+node_modules/
+
+# Local runtime data
+workspace/
+
+# Local secrets and machine-specific files
+.env
+.env.*
+*.log
+*.pid
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+__pycache__/
+
+# PoC dependencies (too large for git)
+h2-*.jar
+*.class

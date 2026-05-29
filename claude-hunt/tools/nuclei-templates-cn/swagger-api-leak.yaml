@@ -1,0 +1,40 @@
+id: swagger-api-doc-exposure
+
+info:
+  name: Swagger API Documentation Exposure
+  author: bai-codeagent
+  severity: medium
+  description: |
+    Swagger/OpenAPI 文档接口暴露，泄露所有API端点、参数、数据模型。
+    攻击者可据此发现未授权接口、IDOR等漏洞。
+  tags: swagger,api,info-leak,cn-cms
+  metadata:
+    src-applicable: true
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/swagger-ui.html"
+      - "{{BaseURL}}/swagger-ui/"
+      - "{{BaseURL}}/swagger-ui/index.html"
+      - "{{BaseURL}}/v2/api-docs"
+      - "{{BaseURL}}/v3/api-docs"
+      - "{{BaseURL}}/swagger-resources"
+      - "{{BaseURL}}/api/swagger-ui.html"
+      - "{{BaseURL}}/doc.html"
+      - "{{BaseURL}}/docs/"
+
+    stop-at-first-match: true
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "swagger"
+          - '"paths"'
+          - '"info"'
+          - "Swagger UI"
+          - "springfox"
+        condition: or
+      - type: status
+        status:
+          - 200

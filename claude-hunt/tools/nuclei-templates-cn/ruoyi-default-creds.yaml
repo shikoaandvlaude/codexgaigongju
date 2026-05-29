@@ -1,0 +1,55 @@
+id: ruoyi-default-credentials
+
+info:
+  name: 若依(RuoYi) - Default Admin Credentials
+  author: bai-codeagent
+  severity: critical
+  description: |
+    若依管理系统默认账号 admin/admin123 未修改，可直接登录后台获取管理权限。
+    若依是国内使用最广泛的Java快速开发框架之一。
+  reference:
+    - https://gitee.com/y_project/RuoYi
+  tags: ruoyi,default-login,cn-cms
+  metadata:
+    cnvd-applicable: true
+    default-credentials: admin/admin123
+
+requests:
+  - raw:
+      - |
+        POST {{BaseURL}}/login HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+
+        {"username":"admin","password":"admin123"}
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - '"code":200'
+          - '"msg":"操作成功"'
+          - '"token"'
+        condition: or
+      - type: status
+        status:
+          - 200
+
+  - raw:
+      - |
+        POST {{BaseURL}}/prod-api/login HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/json
+
+        {"username":"admin","password":"admin123"}
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - '"code":200'
+          - '"token"'
+        condition: and
+      - type: status
+        status:
+          - 200

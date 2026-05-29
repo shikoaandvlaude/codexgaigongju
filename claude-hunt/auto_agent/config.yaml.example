@@ -1,0 +1,340 @@
+# ============================================================
+# Bai Auto-Hunt Agent 配置文件
+# 复制为 config.yaml 并填入你的 API Key
+# ============================================================
+
+# LLM 配置（支持 DeepSeek / OpenAI 兼容接口）
+llm:
+  provider: "deepseek"
+  api_key: "sk-你的DeepSeek-Key"
+  base_url: "https://api.deepseek.com/v1"
+  model: "deepseek-chat"
+  # 备选模型
+  # model: "deepseek-reasoner"  # 推理更强但更慢
+  max_tokens: 4096
+  temperature: 0.3  # 低温度=更确定性的决策
+
+# ============================================================
+# HexStrike AI 后端（可选）
+# 如果你本地跑了 HexStrike server，开启后工具命令将通过
+# HexStrike API 执行（享受参数优化+智能缓存+错误恢复）
+# 没有 HexStrike 也能正常跑（自动降级为本地subprocess）
+# ============================================================
+hexstrike:
+  enabled: false              # 设为 true 启用 HexStrike 后端
+  server_url: "http://127.0.0.1:8888"   # HexStrike server 地址
+  timeout: 120                # 单次命令超时(秒)
+  fallback_to_local: true     # server掉线时自动降级为本地执行
+  # 使用方式:
+  #   1. git clone https://github.com/0x4m4/hexstrike-ai.git
+  #   2. cd hexstrike-ai && pip install -r requirements.txt
+  #   3. python3 hexstrike_server.py  (另开一个终端)
+  #   4. 这里 enabled 改为 true
+  #   5. 运行 auto_hunt.py，工具命令将通过 HexStrike API 执行
+
+# 安全限速
+rate_limit:
+  requests_per_second: 3      # 有WAF时降到1
+  max_concurrent: 2
+  delay_between_phases: 5     # 每个阶段之间等待秒数
+  max_total_requests: 500     # 单次运行最大请求数（超过就停）
+
+# 红线规则
+redline:
+  check_interval: 10          # 每10步做一次红线审查
+  max_404_ratio: 0.8          # 404超过80%就停（可能被ban）
+  max_403_consecutive: 5      # 连续5个403就停
+  forbidden_keywords:         # 响应中出现这些就停
+    - "访问被拒绝"
+    - "IP已被封禁"
+    - "请完成人机验证"
+    - "滑块验证"
+  forbidden_paths:            # 绝对不碰的路径
+    - "/admin/delete"
+    - "/api/user/all"
+    - "/database/export"
+
+# 日志
+log:
+  desktop: true               # 输出到桌面
+  filename_prefix: "doing"    # doing_2025-06-18.md
+  verbose: true               # 记录详细命令输出
+
+# Agent 行为
+agent:
+  auto_mode_confirm_critical: true   # 全自动模式下，发现高危仍暂停确认
+  max_phase_time: 600         # 单阶段最长10分钟
+  trace_analysis_interval: 5  # 每5步做一次痕迹分析
+
+# Session 监控（账号状态检测）
+session_monitor:
+  check_url: ""               # 填一个登录后能正常访问的URL(如个人中心)
+  cookie: ""                  # 你的登录Cookie
+  expected_keyword: ""        # 页面中应该出现的关键词(如用户名)
+  check_interval: 10          # 每10步检查一次Session
+
+# IDOR 多账号对比
+idor:
+  cookie_a: ""                # 账号A的Cookie
+  cookie_b: ""                # 账号B的Cookie (用A的Cookie访问B的资源)
+  # 配置后 Agent 会自动从URL中识别IDOR接口并交叉验证
+
+# 目标 + 资产发现
+target:
+  domain: ""                  # 运行时输入
+  company_name: ""            # 公司名(用于ICP备案关联/天眼查穿透)
+  scope:
+    - "*.target.com"
+  out_of_scope:
+    - "*.gov.cn"
+    - "*.edu.cn"
+    - "payment.target.com"
+
+# 断点续跑（崩溃恢复）
+checkpoint:
+  enabled: true               # 启用断点保存
+  directory: "~/.bai-agent/checkpoints"  # 检查点保存目录
+  auto_resume: true           # auto模式下自动恢复上次进度
+
+# Scope 自动更新（授权范围管理）
+scope_updater:
+  enabled: true               # 启用 scope 管理
+  max_age_hours: 24           # scope 数据超过24小时视为过期
+  data_dir: "~/.bai-agent/scope"  # scope 数据存储目录
+  platforms:                  # 关注的平台列表（用于提醒）
+    - "butian"                # 补天
+    - "vulbox"                # 漏洞盒子
+
+# 误报自动过滤
+false_positive_filter:
+  enabled: true               # 启用误报过滤
+  auto_threshold: 55          # auto模式下，可信度低于此值自动过滤
+  patterns:                   # 启用的检测模式
+    - "idor"                  # IDOR: 响应体相同检测
+    - "cors"                  # CORS: 非任意来源反射检测
+    - "race_condition"        # 竞态: 服务端正确处理检测
+    - "xss"                   # XSS: 不可执行上下文检测
+    - "generic"               # 通用: 404/WAF/蜜罐检测
+    - "waf_detection"         # WAF/拦截页不作为漏洞证据
+    - "baseline_compare"      # baseline/payload 响应一致性检查
+    - "public_data_check"     # 匿名访问同数据则降权
+
+validation:
+  reproduction_attempts: 5
+  min_confidence: 0.7
+  require_dual_method: true
+  sqli:
+    require_both_boolean_and_time: false
+    time_delay_margin: 1.0
+  xss:
+    require_dom_execution: true
+    ignore_contexts:
+      - "html_comment"
+      - "json_response"
+      - "text_plain"
+  idor:
+    require_dual_account: true
+    require_private_data: true
+
+report_gate:
+  enabled: true
+  min_reproduction_count: 2
+  require_impact: true
+  require_evidence: true
+  require_dual_account_for_idor: true
+  require_private_data_for_idor: true
+  block_theoretical_language: true
+  always_rejected_standalone:
+    - "missing_headers"
+    - "graphql_introspection"
+    - "self_xss"
+    - "open_redirect_standalone"
+    - "ssrf_dns_only"
+    - "logout_csrf"
+    - "missing_cookie_flags"
+    - "rate_limit_noncritical"
+    - "banner_disclosure"
+
+
+
+# ============================================================
+# 深度挖掘模块配置 (Deep Hunt — 新增)
+# 使用自研 HTTP 引擎 + 响应差异检测，替代纯工具编排
+# 需要额外依赖: pip install httpx
+# ============================================================
+deep_hunt:
+  enabled: true               # 启用深度挖掘阶段
+
+  # 代理配置（可接入 Burp/mitmproxy 查看流量）
+  proxy: ""                   # 例: "http://127.0.0.1:8080"
+  timeout: 15                 # 单次 HTTP 请求超时(秒)
+
+  # 主动 Fuzz 配置
+  enable_fuzz: true           # 启用主动参数 Fuzz
+  anomaly_threshold: 30       # 异常分阈值(0-100)，超过此值标记为发现
+  confirm_threshold: 60       # 二次确认阈值，超过此值认为可信
+  max_params_per_url: 10      # 每个URL最多测试的参数数
+
+  # IDOR 测试配置
+  enable_idor: true           # 启用系统性IDOR测试
+  # (双账号cookie在上方 idor 配置节中设置)
+
+  # 业务逻辑测试
+  enable_bizlogic: true       # 启用业务逻辑测试(竞态/金额/流程)
+
+  # 认证绕过测试
+  enable_auth_bypass: true    # 启用403绕过测试
+
+  # 验证配置
+  reproduction_attempts: 5    # 可复现性检查次数
+  
+  # WAF 绕过
+  enable_waf_bypass: true     # 对被拦截的payload自动尝试绕过
+  waf_type: ""                # 手动指定WAF类型(留空=自动检测)
+  # 可选值: cloudflare / aliyun / baota / tencent / modsecurity
+
+# 业务逻辑测试详细配置
+business_logic:
+  # 状态检查URL（用于验证竞态条件是否真的生效）
+  # 例如: 余额查询接口
+  state_url: ""               # 例: "https://target.com/api/wallet/balance"
+  state_field: ""             # JSON中的余额字段名, 例: "data.balance"
+  
+  # 价格篡改测试的目标（可选，不填则自动从URL中识别）
+  order_url: ""               # 下单接口URL
+  # order_body 示例: {"product_id": 1, "price": 100, "quantity": 1}
+
+  # 优惠券重复使用测试
+  coupon_url: ""              # 兑换接口URL
+  # coupon_body 示例: {"code": "PROMO50"}
+
+
+
+# ============================================================
+# 浏览器爬虫配置 (Browser Crawler)
+# 用 Playwright 爬取现代 SPA 应用，发现隐藏 API
+# 需要: pip install playwright && playwright install chromium
+# ============================================================
+browser_crawler:
+  enabled: true
+  headless: true               # true=无头模式, false=显示浏览器窗口(调试用)
+  max_pages: 50                # 最大爬取页面数
+  max_depth: 3                 # 最大爬取深度
+  wait_time: 3000              # 等待JS渲染的时间(毫秒)
+  timeout: 30000               # 页面加载超时(毫秒)
+  screenshot_dir: ""           # 截图保存目录(留空=不截图)
+  proxy: ""                    # 代理(可接入Burp查看流量)
+
+  # 自动登录配置（可选）
+  login_url: ""                # 登录页URL
+  login_username: ""           # 用户名
+  login_password: ""           # 密码
+  login_username_selector: "input[name='username'], input[type='email']"
+  login_password_selector: "input[name='password'], input[type='password']"
+  login_submit_selector: "button[type='submit'], input[type='submit']"
+
+  # Cookie 方式登录（如果已有Cookie，填这里比自动登录更可靠）
+  cookies: []
+  # 示例:
+  # cookies:
+  #   - {name: "session", value: "abc123", domain: "target.com", path: "/"}
+
+# ============================================================
+# 认证管理配置 (Auth Manager)
+# 自动刷新过期的 Session/JWT/OAuth Token
+# ============================================================
+auth_manager:
+  enabled: true
+  type: "cookie"              # cookie / jwt / oauth2 / apikey / custom
+
+  # Cookie/Session 登录
+  login_url: ""               # 登录接口URL
+  login_body: {}              # 登录请求体 (JSON)
+  # 示例: login_body: {"username": "test", "password": "pass123"}
+  session_cookie_name: ""     # Session Cookie 名称
+
+  # JWT 配置
+  jwt_refresh_url: ""         # Token 刷新接口
+  jwt_header_name: "Authorization"
+  jwt_header_prefix: "Bearer "
+
+  # OAuth2 配置
+  oauth2_token_url: ""
+  oauth2_client_id: ""
+  oauth2_client_secret: ""
+
+  # API Key 配置
+  api_key: ""
+  api_key_header: "X-API-Key"
+
+  # 验证登录态
+  check_url: ""               # 用于验证登录是否有效的URL
+  check_keyword: ""           # 响应中应包含的关键词
+  check_interval: 60          # 检查间隔(秒)
+
+# ============================================================
+# 变化监控配置 (Change Monitor)
+# 定期检测目标变化，第一时间发现新攻击面
+# 运行: python -m change_monitor (后台持续运行)
+# ============================================================
+change_monitor:
+  enabled: true
+  targets: []                 # 监控的目标列表
+  # 示例: targets: ["target.com", "api.target.com"]
+  check_interval: 3600        # 检查间隔(秒), 默认1小时
+  db_path: "~/.bai-agent/monitor.db"  # 数据库路径
+
+  # Webhook 通知
+  webhook_url: ""             # Webhook URL
+  webhook_type: "generic"     # generic / feishu / dingtalk / telegram / discord
+  # 飞书示例: webhook_url: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+  # 钉钉示例: webhook_url: "https://oapi.dingtalk.com/robot/send?access_token=xxx"
+  # Telegram: webhook_url: "https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<ID>"
+  # Discord: webhook_url: "https://discord.com/api/webhooks/xxx/yyy"
+
+# ============================================================
+# 持久化存储配置 (DB Store)
+# ============================================================
+db_store:
+  enabled: true
+  db_path: "~/.bai-agent/hunt.db"  # SQLite 数据库路径
+  log_requests: true               # 是否记录所有HTTP请求
+  cleanup_days: 30                 # 自动清理N天前的请求日志
+
+# ============================================================
+# API 发现配置 (API Discovery)
+# ============================================================
+api_discovery:
+  enabled: true
+  probe_swagger: true         # 探测 Swagger/OpenAPI
+  probe_graphql: true         # 探测 GraphQL
+  probe_common_paths: true    # 探测常见API路径
+  parse_robots: true          # 解析 robots.txt
+
+
+# ============================================================
+# APP/IoT 目标专用配置
+# 当目标是 APP 包名时（如 com.dreame.smartlife），自动启用
+# ============================================================
+app:
+  # APK 文件路径（可选，有则自动反编译提取API）
+  apk_path: ""                # 例: "/path/to/dreame.apk"
+  # 抓包文件（Charles/mitmproxy/Fiddler 导出的 HAR 文件）
+  har_path: ""                # 例: "/path/to/capture.har"
+  # 设备信息（IoT 测试用）
+  device_id_a: ""             # 你的设备ID（从APP抓包获取）
+  device_id_b: ""             # 第二个测试设备ID
+
+# IoT 设备专项测试
+iot:
+  enabled: true               # 启用IoT专项测试
+  # 双账号 Token（APP登录后的Bearer Token）
+  token_a: ""                 # 账号A的 Bearer Token
+  token_b: ""                 # 账号B的 Bearer Token
+  # API 基础地址（从抓包/APK分析获得）
+  base_url: ""                # 例: "https://api.dreame.com"
+  # 测试项开关
+  test_device_idor: true      # 设备越权访问
+  test_firmware: true         # 固件未授权下载
+  test_id_enum: true          # 设备ID枚举
+  test_mqtt: true             # MQTT消息越权（需要paho-mqtt）

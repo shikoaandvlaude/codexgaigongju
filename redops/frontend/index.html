@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RedOps Agent - 智能渗透测试助手</title>
+    <style>
+        :root {
+            --primary: #00d97e;
+            --primary-dark: #00b368;
+            --bg-dark: #0d1117;
+            --bg-card: #161b22;
+            --bg-input: #21262d;
+            --border: #30363d;
+            --text: #c9d1d9;
+            --text-muted: #8b949e;
+            --danger: #f85149;
+            --success: #3fb950;
+            --info: #58a6ff;
+            --warning: #d29922;
+        }
+        * {margin: 0;padding: 0;box-sizing: border-box;}
+        body {font-family: 'Inter', -apple-system, sans-serif;background: var(--bg-dark);color: var(--text);height: 100vh;overflow: hidden;}
+        
+        .app-container {display: flex;height: 100vh;}
+        
+        /* Sidebar */
+        .sidebar {width: 220px;background: var(--bg-card);border-right: 1px solid var(--border);display: flex;flex-direction: column;padding: 16px 12px;}
+        .logo {display: flex;align-items: center;gap: 10px;padding: 8px 12px;margin-bottom: 24px;}
+        .logo-icon {width: 32px;height: 32px;background: linear-gradient(135deg, var(--primary), #00a86b);border-radius: 8px;display: flex;align-items: center;justify-content: center;font-weight: 700;color: white;}
+        .logo-text {font-size: 18px;font-weight: 700;color: white;}
+        .sidebar-section {margin-bottom: 20px;}
+        .sidebar-title {font-size: 10px;text-transform: uppercase;color: var(--text-muted);margin-bottom: 8px;padding: 0 12px;letter-spacing: 0.5px;}
+        .sidebar-item {display: flex;align-items: center;gap: 10px;padding: 10px 12px;border-radius: 6px;cursor: pointer;transition: all 0.2s;color: var(--text);font-size: 13px;}
+        .sidebar-item:hover {background: var(--bg-input);}
+        .sidebar-item.active {background: rgba(0, 217, 126, 0.15);color: var(--primary);}
+        
+        /* Main Content */
+        .main-content {flex: 1;display: flex;flex-direction: column;background: var(--bg-dark);overflow: hidden;}
+        .header {height: 56px;background: var(--bg-card);border-bottom: 1px solid var(--border);display: flex;align-items: center;justify-content: space-between;padding: 0 24px;}
+        .header-title {font-size: 15px;font-weight: 600;color: white;}
+        .header-status {display: flex;align-items: center;gap: 16px;}
+        .status-dot {width: 8px;height: 8px;background: var(--success);border-radius: 50%;}
+        .status-dot.error {background: var(--danger);}
+        .status-text {font-size: 12px;color: var(--text-muted);}
+        
+        /* Pages */
+        .page {display: none;flex: 1;overflow: hidden;}
+        .page.active {display: flex;flex-direction: column;}
+        
+        /* Chat */
+        .chat-container {flex: 1;display: flex;flex-direction: column;overflow: hidden;}
+        .chat-messages {flex: 1;overflow-y: auto;padding: 24px;}
+        .message {display: flex;gap: 12px;margin-bottom: 20px;animation: fadeIn 0.3s ease;}
+        @keyframes fadeIn {from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); }}
+        .message-avatar {width: 36px;height: 36px;border-radius: 8px;display: flex;align-items: center;justify-content: center;font-weight: 600;font-size: 14px;flex-shrink: 0;}
+        .message-avatar.user {background: var(--bg-input);color: var(--text);}
+        .message-avatar.assistant {background: linear-gradient(135deg, var(--primary), #00a86b);color: white;}
+        .message-content {flex: 1;max-width: 700px;}
+        .message-header {display: flex;align-items: center;gap: 8px;margin-bottom: 6px;}
+        .message-name {font-weight: 600;font-size: 14px;color: white;}
+        .message-time {font-size: 12px;color: var(--text-muted);}
+        .message-text {font-size: 14px;line-height: 1.6;color: var(--text);}
+        .message-text code {background: var(--bg-input);padding: 2px 6px;border-radius: 4px;font-family: monospace;font-size: 13px;}
+        .message-text pre {background: var(--bg-input);padding: 12px;border-radius: 8px;overflow-x: auto;margin: 8px 0;}
+        
+        .input-container {padding: 16px 24px 20px;background: var(--bg-card);border-top: 1px solid var(--border);}
+        .input-wrapper {display: flex;gap: 12px;background: var(--bg-input);border: 1px solid var(--border);border-radius: 12px;padding: 12px 16px;transition: border-color 0.2s;}
+        .input-wrapper:focus-within {border-color: var(--primary);}
+        .chat-input {flex: 1;background: transparent;border: none;color: var(--text);font-size: 14px;resize: none;outline: none;font-family: inherit;max-height: 120px;}
+        .chat-input::placeholder {color: var(--text-muted);}
+        .send-btn {background: var(--primary);border: none;border-radius: 8px;width: 40px;height: 40px;cursor: pointer;display: flex;align-items: center;justify-content: center;transition: all 0.2s;}
+        .send-btn:hover {background: var(--primary-dark);}
+        
+        /* Settings Page */
+        .settings-container {flex: 1;overflow-y: auto;padding: 24px;}
+        .settings-section {background: var(--bg-card);border: 1px solid var(--border);border-radius: 12px;padding: 20px;margin-bottom: 20px;}
+        .settings-title {font-size: 16px;font-weight: 600;color: white;margin-bottom: 16px;padding-bottom: 12px;border-bottom: 1px solid var(--border);}
+        .form-group {margin-bottom: 16px;}
+        .form-label {display: block;font-size: 13px;color: var(--text-muted);margin-bottom: 6px;}
+        .form-input {width: 100%;background: var(--bg-input);border: 1px solid var(--border);border-radius: 8px;padding: 10px 14px;color: var(--text);font-size: 14px;outline: none;}
+        .form-input:focus {border-color: var(--primary);}
+        .form-select {width: 100%;background: var(--bg-input);border: 1px solid var(--border);border-radius: 8px;padding: 10px 14px;color: var(--text);font-size: 14px;outline: none;}
+        .form-checkbox {display: flex;align-items: center;gap: 8px;}
+        .form-checkbox input {width: 18px;height: 18px;accent-color: var(--primary);}
+        .btn {background: var(--primary);border: none;border-radius: 8px;padding: 10px 20px;color: white;font-size: 14px;cursor: pointer;transition: all 0.2s;}
+        .btn:hover {background: var(--primary-dark);}
+        .btn-danger {background: var(--danger);}
+        .btn-danger:hover {background: #d73a49;}
+        
+        /* Terminal */
+        .terminal-container {flex: 1;display: flex;flex-direction: column;overflow: hidden;padding: 24px;}
+        .terminal-output {flex: 1;background: #0a0e14;border: 1px solid var(--border);border-radius: 8px;padding: 16px;overflow-y: auto;font-family: 'Consolas', monospace;font-size: 13px;line-height: 1.5;color: #a9d7e6;white-space: pre-wrap;word-break: break-all;}
+        .terminal-input-wrapper {display: flex;gap: 12px;margin-top: 16px;}
+        .terminal-input {flex: 1;background: var(--bg-input);border: 1px solid var(--border);border-radius: 8px;padding: 12px 16px;color: var(--primary);font-family: 'Consolas', monospace;font-size: 14px;outline: none;}
+        .terminal-input:focus {border-color: var(--primary);}
+        
+        /* Tools */
+        .tools-container {flex: 1;overflow-y: auto;padding: 24px;}
+        .tool-grid {display: grid;grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));gap: 16px;}
+        .tool-card {background: var(--bg-card);border: 1px solid var(--border);border-radius: 12px;padding: 16px;}
+        .tool-header {display: flex;justify-content: space-between;align-items: center;margin-bottom: 8px;}
+        .tool-name {font-weight: 600;color: white;font-size: 14px;}
+        .tool-status {padding: 4px 8px;border-radius: 4px;font-size: 11px;}
+        .tool-status.installed {background: rgba(63, 185, 80, 0.2);color: var(--success);}
+        .tool-status.missing {background: rgba(248, 81, 73, 0.2);color: var(--danger);}
+        .tool-command {font-family: monospace;font-size: 12px;color: var(--text-muted);background: var(--bg-input);padding: 8px;border-radius: 4px;margin-top: 8px;}
+        
+        /* Connectors */
+        .connectors-container {flex: 1;overflow-y: auto;padding: 24px;}
+        .connector-card {background: var(--bg-card);border: 1px solid var(--border);border-radius: 12px;padding: 20px;margin-bottom: 20px;}
+        .connector-header {display: flex;justify-content: space-between;align-items: center;margin-bottom: 16px;}
+        .connector-title {font-size: 16px;font-weight: 600;color: white;}
+        .connector-status {display: flex;align-items: center;gap: 8px;font-size: 13px;}
+        .connector-status.connected {color: var(--success);}
+        .connector-status.disconnected {color: var(--text-muted);}
+        
+        /* Targets */
+        .targets-container {flex: 1;overflow-y: auto;padding: 24px;}
+        .target-list {background: var(--bg-card);border: 1px solid var(--border);border-radius: 12px;}
+        .target-item {display: flex;justify-content: space-between;align-items: center;padding: 16px;border-bottom: 1px solid var(--border);}
+        .target-item:last-child {border-bottom: none;}
+        .target-info {flex: 1;}
+        .target-name {font-weight: 600;color: white;margin-bottom: 4px;}
+        .target-desc {font-size: 12px;color: var(--text-muted);}
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {width: 6px;}
+        ::-webkit-scrollbar-thumb {background: var(--border);border-radius: 3px;}
+        
+        /* Animations */
+        .typing-indicator {display: none;gap: 4px;padding: 8px 0;}
+        .typing-indicator.active {display: flex;}
+        .typing-dot {width: 6px;height: 6px;background: var(--text-muted);border-radius: 50%;animation: bounce 1.4s infinite ease-in-out;}
+        .typing-dot:nth-child(1) {animation-delay: 0s;} .typing-dot:nth-child(2) {animation-delay: 0.2s;} .typing-dot:nth-child(3) {animation-delay: 0.4s;}
+        @keyframes bounce {0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; } 40% { transform: scale(1); opacity: 1; }}
+        
+        /* File Manager */
+        .file-manager {flex: 1;display: flex;overflow: hidden;}
+        .file-tree {width: 250px;background: var(--bg-card);border-right: 1px solid var(--border);overflow-y: auto;padding: 12px;}
+        .file-item {display: flex;align-items: center;gap: 8px;padding: 8px 12px;border-radius: 6px;cursor: pointer;font-size: 13px;}
+        .file-item:hover {background: var(--bg-input);}
+        .file-item.folder {color: var(--info);}
+        .file-item.selected {background: rgba(0, 217, 126, 0.15);color: var(--primary);}
+        .file-content {flex: 1;overflow: auto;padding: 16px;}
+        .file-editor {width: 100%;height: 100%;background: var(--bg-input);border: 1px solid var(--border);border-radius: 8px;padding: 16px;color: var(--text);font-family: monospace;font-size: 13px;resize: none;outline: none;}
+        
+        /* Scan Results */
+        .scan-results {flex: 1;overflow-y: auto;padding: 24px;}
+        .result-card {background: var(--bg-card);border: 1px solid var(--border);border-radius: 12px;padding: 16px;margin-bottom: 16px;}
+        .result-header {display: flex;justify-content: space-between;margin-bottom: 12px;}
+        .result-target {font-weight: 600;color: white;}
+        .result-severity {padding: 4px 8px;border-radius: 4px;font-size: 11px;}
+        .result-severity.critical {background: rgba(248, 81, 73, 0.2);color: var(--danger);}
+        .result-severity.high {background: rgba(210, 153, 34, 0.2);color: var(--warning);}
+        .result-severity.medium {background: rgba(88, 166, 255, 0.2);color: var(--info);}
+        .result-info {font-size: 13px;color: var(--text-muted);}
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">R</div>
+                <div class="logo-text">RedOps</div>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">主菜单</div>
+                <div class="sidebar-item active" onclick="switchView('chat')" id="nav-chat">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    <span>对话助手</span>
+                </div>
+                <div class="sidebar-item" onclick="switchView('terminal')" id="nav-terminal">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                    <span>终端</span>
+                </div>
+                <div class="sidebar-item" onclick="switchView('files')" id="nav-files">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                    <span>文件管理</span>
+                </div>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">工具</div>
+                <div class="sidebar-item" onclick="switchView('tools')" id="nav-tools">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+                    <span>工具管理</span>
+                </div>
+                <div class="sidebar-item" onclick="switchView('targets')" id="nav-targets">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+                    <span>目标管理</span>
+                </div>
+                <div class="sidebar-item" onclick="switchView('scan')" id="nav-scan">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <span>漏洞扫描</span>
+                </div>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-title">集成</div>
+                <div class="sidebar-item" onclick="switchView('connectors')" id="nav-connectors">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                    <span>连接器</span>
+                </div>
+            </div>
+            
+            <div class="sidebar-section" style="margin-top: auto;">
+                <div class="sidebar-title">系统</div>
+                <div class="sidebar-item" onclick="switchView('settings')" id="nav-settings">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    <span>设置</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="header">
+                <div class="header-title" id="page-title">对话助手</div>
+                <div class="header-status">
+                    <span class="status-dot" id="system-status"></span>
+                    <span class="status-text" id="system-status-text">在线</span>
+                </div>
+            </div>
+            
+            <!-- Chat Page -->
+            <div class="page active" id="page-chat">
+                <div class="chat-container">
+                    <div class="chat-messages" id="chat-messages">
+                        <div class="message">
+                            <div class="message-avatar assistant">R</div>
+                            <div class="message-content">
+                                <div class="message-header">
+                                    <span class="message-name">RedOps</span>
+                                </div>
+                                <div class="message-text">
+                                    你好！我是 RedOps 智能渗透测试助手。<br><br>
+                                    我可以帮你完成以下工作：<br>
+                                    • 执行系统命令<br>
+                                    • 扫描漏洞<br>
+                                    • 搜索资产<br>
+                                    • 管理文件<br>
+                                    • 自动安装工具<br><br>
+                                    请直接告诉我你想要做什么。
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="typing-indicator" id="typing-indicator">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+                    <div class="input-container">
+                        <div class="input-wrapper">
+                            <textarea class="chat-input" id="chat-input" placeholder="输入你的命令或问题..." rows="1"></textarea>
+                            <button class="send-btn" onclick="sendMessage()">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Terminal Page -->
+            <div class="page" id="page-terminal">
+                <div class="terminal-container">
+                    <div class="terminal-output" id="terminal-output">RedOps 终端 - 连接就绪
+执行命令与系统交互
+Type 'help' for commands
+─────────────────────────────────────────
+</div>
+                    <div class="terminal-input-wrapper">
+                        <input type="text" class="terminal-input" id="terminal-input" placeholder="输入命令并按Enter执行...">
+                        <button class="btn" onclick="executeCommand()">执行</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Files Page -->
+            <div class="page" id="page-files">
+                <div class="file-manager">
+                    <div class="file-tree" id="file-tree"></div>
+                    <div class="file-content">
+                        <textarea class="file-editor" id="file-editor" placeholder="选择文件查看内容..."></textarea>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tools Page -->
+            <div class="page" id="page-tools">
+                <div class="tools-container">
+                    <h2 style="margin-bottom: 20px;color: white;">工具管理</h2>
+                    <div class="tool-grid" id="tool-grid">
+                        <div style="color: var(--text-muted);">加载中...</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Targets Page -->
+            <div class="page" id="page-targets">
+                <div class="targets-container">
+                    <h2 style="margin-bottom: 20px;color: white;">目标管理</h2>
+                    <div class="target-list" id="target-list">
+                        <div class="target-item">
+                            <div class="target-info">
+                                <div class="target-name">添加新目标</div>
+                                <div class="target-desc">点击添加渗透测试目标</div>
+                            </div>
+                            <button class="btn" onclick="addTarget()">添加</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Scan Page -->
+            <div class="page" id="page-scan">
+                <div class="scan-results">
+                    <h2 style="margin-bottom: 20px;color: white;">漏洞扫描</h2>
+                    <div class="settings-section">
+                        <div class="form-group">
+                            <label class="form-label">目标地址</label>
+                            <input type="text" class="form-input" id="scan-target" placeholder="例如: example.com 或 192.168.1.1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">扫描类型</label>
+                            <select class="form-select" id="scan-type">
+                                <option value="basic">基础扫描</option>
+                                <option value="nuclei">Nuclei漏洞扫描</option>
+                                <option value="full">全面扫描</option>
+                            </select>
+                        </div>
+                        <button class="btn" onclick="startScan()">开始扫描</button>
+                    </div>
+                    <div id="scan-results"></div>
+                </div>
+            </div>
+            
+            <!-- Connectors Page -->
+            <div class="page" id="page-connectors">
+                <div class="connectors-container">
+                    <h2 style="margin-bottom: 20px;color: white;">连接器配置</h2>
+                    
+                    <!-- Telegram -->
+                    <div class="connector-card">
+                        <div class="connector-header">
+                            <div class="connector-title">Telegram 机器人</div>
+                            <div class="connector-status disconnected" id="telegram-status">
+                                <span class="status-dot"></span>
+                                <span>未连接</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Bot Token</label>
+                            <input type="text" class="form-input" id="telegram-token" placeholder="输入Telegram Bot Token">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">允许的聊天ID (逗号分隔)</label>
+                            <input type="text" class="form-input" id="telegram-chats" placeholder="例如: 123456789">
+                        </div>
+                        <button class="btn" onclick="saveTelegramConfig()">保存并启动</button>
+                    </div>
+                    
+                    <!-- QQ -->
+                    <div class="connector-card">
+                        <div class="connector-header">
+                            <div class="connector-title">QQ 机器人 (go-cqhttp)</div>
+                            <div class="connector-status disconnected" id="qq-status">
+                                <span class="status-dot"></span>
+                                <span>未连接</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">WebSocket地址</label>
+                            <input type="text" class="form-input" id="qq-ws" value="ws://127.0.0.1:6700" placeholder="ws://127.0.0.1:6700">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Access Token</label>
+                            <input type="text" class="form-input" id="qq-token" placeholder="go-cqhttp的access_token">
+                        </div>
+                        <button class="btn" onclick="saveQQConfig()">保存并启动</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Settings Page -->
+            <div class="page" id="page-settings">
+                <div class="settings-container">
+                    <h2 style="margin-bottom: 20px;color: white;">系统设置</h2>
+                    
+                    <!-- LLM Settings -->
+                    <div class="settings-section">
+                        <div class="settings-title">LLM 配置</div>
+                        <div class="form-group">
+                            <label class="form-label">提供商</label>
+                            <select class="form-select" id="llm-provider">
+                                <option value="deepseek">DeepSeek</option>
+                                <option value="openai">OpenAI</option>
+                                <option value="anthropic">Anthropic Claude</option>
+                                <option value="qwen">阿里云 Qwen</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">API Key</label>
+                            <input type="password" class="form-input" id="llm-api-key" placeholder="输入API Key">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">API 地址</label>
+                            <input type="text" class="form-input" id="llm-base-url" placeholder="https://api.deepseek.com/v1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">模型</label>
+                            <input type="text" class="form-input" id="llm-model" placeholder="deepseek-chat">
+                        </div>
+                        <button class="btn" onclick="saveLLMConfig()">保存配置</button>
+                    </div>
+                    
+                    <!-- Permission Settings -->
+                    <div class="settings-section">
+                        <div class="settings-title">权限设置</div>
+                        <div class="form-group">
+                            <label class="form-checkbox">
+                                <input type="checkbox" id="root-mode" checked>
+                                <span>启用Root模式 (允许执行所有命令)</span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">允许的目录 (每行一个)</label>
+                            <textarea class="form-input" id="allowed-paths" rows="4" placeholder="/home&#10;/tmp&#10;/opt&#10;/var/www"></textarea>
+                        </div>
+                        <button class="btn" onclick="savePermissions()">保存权限设置</button>
+                    </div>
+                    
+                    <!-- Web Settings -->
+                    <div class="settings-section">
+                        <div class="settings-title">Web服务设置</div>
+                        <div class="form-group">
+                            <label class="form-label">端口</label>
+                            <input type="number" class="form-input" id="web-port" value="8000">
+                        </div>
+                        <button class="btn" onclick="saveWebConfig()">保存设置</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Global state
+        let currentView = 'chat';
+        let ws = null;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            initWebSocket();
+            loadSettings();
+            loadTools();
+            loadTargets();
+            
+            // Terminal input
+            document.getElementById('terminal-input').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    executeCommand();
+                }
+            });
+            
+            // Chat input
+            document.getElementById('chat-input').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+        });
+        
+        // View switching
+        function switchView(view) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+            
+            document.getElementById('page-' + view).classList.add('active');
+            document.getElementById('nav-' + view).classList.add('active');
+            
+            const titles = {
+                'chat': '对话助手',
+                'terminal': '终端',
+                'files': '文件管理',
+                'tools': '工具管理',
+                'targets': '目标管理',
+                'scan': '漏洞扫描',
+                'connectors': '连接器',
+                'settings': '系统设置'
+            };
+            document.getElementById('page-title').textContent = titles[view] || view;
+            
+            currentView = view;
+        }
+        
+        // WebSocket
+        function initWebSocket() {
+            ws = new WebSocket('ws://' + location.host + '/ws/client');
+            ws.onopen = function() {
+                document.getElementById('system-status').classList.remove('error');
+                document.getElementById('system-status-text').textContent = '在线';
+            };
+            ws.onclose = function() {
+                document.getElementById('system-status').classList.add('error');
+                document.getElementById('system-status-text').textContent = '离线';
+                setTimeout(initWebSocket, 3000);
+            };
+            ws.onmessage = function(e) {
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data.type === 'command_result') {
+                        appendTerminalOutput(data.result.stdout + data.result.stderr);
+                    }
+                } catch(err) {}
+            };
+        }
+        
+        // Chat
+        function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            // Add user message
+            addMessage('user', message);
+            input.value = '';
+            
+            // Show typing
+            document.getElementById('typing-indicator').classList.add('active');
+            
+            // Send to API
+            fetch('/api/chat/message', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message: message})
+            })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('typing-indicator').classList.remove('active');
+                addMessage('assistant', data.message || data.response || '处理完成');
+            })
+            .catch(err => {
+                document.getElementById('typing-indicator').classList.remove('active');
+                addMessage('assistant', '请求失败: ' + err.message);
+            });
+        }
+        
+        function addMessage(role, content) {
+            const container = document.getElementById('chat-messages');
+            const div = document.createElement('div');
+            div.className = 'message';
+            div.innerHTML = `
+                <div class="message-avatar ${role}">${role === 'user' ? 'U' : 'R'}</div>
+                <div class="message-content">
+                    <div class="message-header">
+                        <span class="message-name">${role === 'user' ? '你' : 'RedOps'}</span>
+                        <span class="message-time">${new Date().toLocaleTimeString()}</span>
+                    </div>
+                    <div class="message-text">${content.replace(/\n/g, '<br>')}</div>
+                </div>
+            `;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        // Terminal
+        function executeCommand() {
+            const input = document.getElementById('terminal-input');
+            const cmd = input.value.trim();
+            if (!cmd) return;
+            
+            appendTerminalOutput('$ ' + cmd);
+            input.value = '';
+            
+            fetch('/api/system/execute', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({command: cmd, timeout: 30})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    appendTerminalOutput(data.stdout || '(无输出)');
+                } else {
+                    appendTerminalOutput('错误: ' + (data.error || data.stderr));
+                }
+            })
+            .catch(err => {
+                appendTerminalOutput('请求失败: ' + err.message);
+            });
+        }
+        
+        function appendTerminalOutput(text) {
+            const output = document.getElementById('terminal-output');
+            output.textContent += '\n' + text;
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        // Tools
+        function loadTools() {
+            fetch('/api/system/tools')
+                .then(r => r.json())
+                .then(data => {
+                    const grid = document.getElementById('tool-grid');
+                    grid.innerHTML = data.tools.map(t => `
+                        <div class="tool-card">
+                            <div class="tool-header">
+                                <span class="tool-name">${t.name}</span>
+                                <span class="tool-status ${t.installed ? 'installed' : 'missing'}">${t.installed ? '已安装' : '未安装'}</span>
+                            </div>
+                            <div class="tool-command">${t.install_command || '未知'}</div>
+                            ${!t.installed ? `<button class="btn" style="margin-top:8px" onclick="installTool('${t.name}')">安装</button>` : ''}
+                        </div>
+                    `).join('');
+                });
+        }
+        
+        function installTool(name) {
+            fetch('/api/system/tools/install', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({tool_name: name})
+            })
+            .then(r => r.json())
+            .then(data => {
+                alert(data.success ? '安装成功' : '安装失败: ' + data.error);
+                loadTools();
+            });
+        }
+        
+        // Targets
+        function loadTargets() {
+            fetch('/api/targets')
+                .then(r => r.json())
+                .then(data => {
+                    const list = document.getElementById('target-list');
+                    list.innerHTML = (data.targets || []).map(t => `
+                        <div class="target-item">
+                            <div class="target-info">
+                                <div class="target-name">${t.name || t.url}</div>
+                                <div class="target-desc">${t.description || t.url}</div>
+                            </div>
+                            <button class="btn" onclick="scanTarget('${t.url}')">扫描</button>
+                        </div>
+                    `).join('') + `
+                        <div class="target-item">
+                            <div class="target-info">
+                                <div class="target-name">添加新目标</div>
+                                <div class="target-desc">点击添加渗透测试目标</div>
+                            </div>
+                            <button class="btn" onclick="addTarget()">添加</button>
+                        </div>
+                    `;
+                });
+        }
+        
+        function addTarget() {
+            const url = prompt('输入目标URL:');
+            if (url) {
+                fetch('/api/targets', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url: url, name: url})
+                }).then(() => loadTargets());
+            }
+        }
+        
+        function scanTarget(url) {
+            document.getElementById('scan-target').value = url;
+            switchView('scan');
+        }
+        
+        // Scan
+        function startScan() {
+            const target = document.getElementById('scan-target').value;
+            const type = document.getElementById('scan-type').value;
+            
+            if (!target) {
+                alert('请输入目标地址');
+                return;
+            }
+            
+            document.getElementById('scan-results').innerHTML = '<div style="color: var(--primary);">正在扫描...</div>';
+            
+            fetch('/api/scan/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({targets: [target], scan_type: type})
+            })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('scan-results').innerHTML = `
+                    <div class="result-card">
+                        <div class="result-header">
+                            <span class="result-target">${target}</span>
+                            <span class="result-severity medium">扫描中</span>
+                        </div>
+                        <div class="result-info">任务已启动，请查看终端输出</div>
+                    </div>
+                `;
+            });
+        }
+        
+        // Settings
+        function loadSettings() {
+            fetch('/api/config')
+                .then(r => r.json())
+                .then(data => {
+                    const llm = data.llm || {};
+                    document.getElementById('llm-provider').value = llm.provider || 'deepseek';
+                    document.getElementById('llm-api-key').value = llm.api_key || '';
+                    document.getElementById('llm-base-url').value = llm.base_url || 'https://api.deepseek.com/v1';
+                    document.getElementById('llm-model').value = llm.model || 'deepseek-chat';
+                    
+                    const sys = data.system || {};
+                    document.getElementById('root-mode').checked = sys.root_mode !== false;
+                    document.getElementById('allowed-paths').value = (sys.allowed_paths || []).join('\n');
+                    
+                    const web = data.web || {};
+                    document.getElementById('web-port').value = web.port || 8000;
+                });
+        }
+        
+        function saveLLMConfig() {
+            const config = {
+                provider: document.getElementById('llm-provider').value,
+                api_key: document.getElementById('llm-api-key').value,
+                base_url: document.getElementById('llm-base-url').value,
+                model: document.getElementById('llm-model').value
+            };
+            
+            fetch('/api/config/llm', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            }).then(() => alert('LLM配置已保存'));
+        }
+        
+        function savePermissions() {
+            const rootMode = document.getElementById('root-mode').checked;
+            const paths = document.getElementById('allowed-paths').value.split('\n').filter(p => p.trim());
+            
+            fetch('/api/system/permissions', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({root_mode: rootMode, allowed_paths: paths})
+            }).then(() => alert('权限设置已保存'));
+        }
+        
+        function saveWebConfig() {
+            const port = parseInt(document.getElementById('web-port').value);
+            fetch('/api/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({web: {port: port}})
+            }).then(() => alert('Web设置已保存，需要重启生效'));
+        }
+        
+        // Connectors
+        function saveTelegramConfig() {
+            const token = document.getElementById('telegram-token').value;
+            const chats = document.getElementById('telegram-chats').value.split(',').map(c => parseInt(c.trim())).filter(c => c);
+            
+            fetch('/api/connectors/telegram/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({enabled: !!token, bot_token: token, allowed_chats: chats})
+            }).then(r => r.json()).then(data => {
+                alert(data.message);
+                checkConnectorStatus();
+            });
+        }
+        
+        function saveQQConfig() {
+            const ws = document.getElementById('qq-ws').value;
+            const token = document.getElementById('qq-token').value;
+            
+            fetch('/api/connectors/qq/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({enabled: !!ws, ws_url: ws, access_token: token})
+            }).then(r => r.json()).then(data => {
+                alert(data.message);
+                checkConnectorStatus();
+            });
+        }
+        
+        function checkConnectorStatus() {
+            fetch('/api/connectors/status')
+                .then(r => r.json())
+                .then(data => {
+                    const tg = data.telegram;
+                    document.getElementById('telegram-status').className = 'connector-status ' + (tg.connected ? 'connected' : 'disconnected');
+                    document.getElementById('telegram-status').innerHTML = '<span class="status-dot"></span><span>' + (tg.connected ? '已连接' : '未连接') + '</span>';
+                    
+                    const qq = data.qq;
+                    document.getElementById('qq-status').className = 'connector-status ' + (qq.connected ? 'connected' : 'disconnected');
+                    document.getElementById('qq-status').innerHTML = '<span class="status-dot"></span><span>' + (qq.connected ? '已连接' : '未连接') + '</span>';
+                });
+        }
+        
+        setInterval(checkConnectorStatus, 5000);
+        checkConnectorStatus();
+    </script>
+</body>
+</html>

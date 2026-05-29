@@ -1,0 +1,35 @@
+# Bai Auto-Hunt Agent Dependencies
+# pip install -r requirements.txt
+
+# ═══ 核心依赖 ═══
+# LLM Client (DeepSeek / OpenAI compatible)
+openai>=1.0.0
+
+# Configuration
+pyyaml>=6.0
+
+# Terminal UI
+rich>=13.0.0
+
+# HTTP requests (HexStrike bridge, session monitor)
+requests>=2.31.0
+
+# ═══ 深度挖掘模块 (Deep Hunt) ═══
+# 异步 HTTP 引擎（替代 subprocess curl，支持响应差异检测）
+httpx>=0.25.0
+
+# ═══ 浏览器爬虫 (Browser Crawler) ═══
+# Playwright — 现代 SPA 爬取、JS渲染、网络拦截
+# 安装后还需执行: playwright install chromium
+playwright>=1.40.0
+
+# ═══ 变化监控 + 持久化 ═══
+# SQLite — stdlib，无需额外安装
+# aiosqlite — 异步 SQLite（可选，当前用同步即可）
+# aiosqlite>=0.19.0
+
+# ═══ 通知 ═══
+# httpx 已覆盖 webhook 推送需求
+
+# Used by scope_updater, checkpoint_manager, db_store (stdlib)
+# json, os, glob, fnmatch, sqlite3, hashlib, asyncio — all stdlib

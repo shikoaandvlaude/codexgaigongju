@@ -1,0 +1,44 @@
+id: springboot-actuator-exposure
+
+info:
+  name: Spring Boot Actuator - Endpoint Exposure
+  author: bai-codeagent
+  severity: high
+  description: |
+    Spring Boot Actuator 端点未做访问控制，可泄露环境变量、堆内存、Bean映射等敏感信息。
+    /actuator/env 可能包含数据库密码、云服务Key等。
+    /actuator/heapdump 可下载JVM堆内存，从中提取凭证。
+  tags: springboot,actuator,info-leak,cn-cms
+  metadata:
+    cnvd-applicable: true
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/actuator"
+      - "{{BaseURL}}/actuator/env"
+      - "{{BaseURL}}/actuator/heapdump"
+      - "{{BaseURL}}/actuator/mappings"
+      - "{{BaseURL}}/actuator/configprops"
+      - "{{BaseURL}}/env"
+      - "{{BaseURL}}/heapdump"
+      - "{{BaseURL}}/mappings"
+
+    stop-at-first-match: true
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - '"_links"'
+          - '"activeProfiles"'
+          - '"propertySources"'
+          - '"dispatcherServlets"'
+          - '"beans"'
+        condition: or
+
+      - type: word
+        part: header
+        words:
+          - "application/octet-stream"
+          - "application/json"
+        condition: or

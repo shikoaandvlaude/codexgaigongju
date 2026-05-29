@@ -1,0 +1,15 @@
+# RedOps Dependencies
+
+# Web后端
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.5.0
+
+# LLM集成
+requests>=2.31.0
+
+# 桌面宠物
+Pillow>=10.0.0
+
+# 核心依赖
+pyyaml>=6.0

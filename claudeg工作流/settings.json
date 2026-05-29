@@ -1,0 +1,47 @@
+{
+  "effortLevel": "max",
+  "env": {
+    "ANTHROPIC_API_KEY": "123456",
+    "ANTHROPIC_AUTH_TOKEN": "123456",
+    "ANTHROPIC_BASE_URL": "http://localhost:3000/openai-codex-oauth",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-5.2-fast",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-5.5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.4",
+    "ANTHROPIC_MODEL": "gpt-5.4",
+    "ANTHROPIC_REASONING_MODEL": "gpt-5.5"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Edit(*)",
+      "Write(*)",
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "TaskCreate(*)",
+      "TaskUpdate(*)",
+      "TaskGet(*)",
+      "TaskList(*)",
+      "TaskOutput(*)",
+      "TaskStop(*)",
+      "Agent(*)",
+      "Skill(*)",
+      "CronCreate(*)",
+      "CronDelete(*)",
+      "CronList(*)",
+      "NotebookEdit(*)",
+      "AskUserQuestion(*)",
+      "EnterPlanMode(*)",
+      "ExitPlanMode(*)",
+      "EnterWorktree(*)",
+      "ExitWorktree(*)",
+      "ScheduleWakeup(*)"
+    ]
+  },
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "auto",
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": ["hermes"]
+}

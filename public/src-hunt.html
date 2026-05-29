@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SRC 漏洞挖掘</title>
+  <link rel="stylesheet" href="/styles.css?v=20260423-multipage" />
+</head>
+<body data-page="src-hunt">
+  <canvas id="particle-field" aria-hidden="true"></canvas>
+  <div class="page-grain" aria-hidden="true"></div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/index.html">
+        <strong>代码审计批量辅助</strong>
+        <span>Multi-Page Console</span>
+      </a>
+      <nav class="nav">
+        <a data-nav href="/index.html">总览</a>
+        <a data-nav href="/discover.html">目标发现</a>
+        <a data-nav href="/audit.html">审计中心</a>
+        <a data-nav href="/src-hunt.html">SRC挖掘</a>
+        <a data-nav href="/fingerprints.html">源码指纹</a>
+        <a data-nav href="/settings.html">设置中心</a>
+      </nav>
+      <div id="quick-status" class="sidebar-status"></div>
+    </aside>
+
+    <main class="main">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">SRC Hunting</p>
+          <h1>SRC 漏洞挖掘辅助</h1>
+          <p class="lede">管理授权目标、生成信息搜集计划、获取漏洞测试模板、红线提醒。</p>
+        </div>
+      </header>
+
+      <section class="page-grid" id="src-app">
+        <!-- Tab 导航 -->
+        <div class="panel" style="grid-column:1/-1">
+          <div class="src-tabs">
+            <button class="src-tab active" data-tab="targets">目标管理</button>
+            <button class="src-tab" data-tab="recon">信息搜集</button>
+            <button class="src-tab" data-tab="templates">漏洞模板</button>
+            <button class="src-tab" data-tab="report">报告生成</button>
+            <button class="src-tab" data-tab="redlines">红线提醒</button>
+          </div>
+        </div>
+
+        <!-- 目标管理 Tab -->
+        <div class="panel src-panel" id="tab-targets" style="grid-column:1/-1">
+          <div class="panel-head">
+            <h2>授权目标管理</h2>
+            <button id="btn-add-target" class="ghost" type="button">+ 添加目标</button>
+          </div>
+          <div id="target-list" class="stack"></div>
+          <div id="add-target-form" class="sub-form hidden">
+            <h3>添加新目标</h3>
+            <div class="form-grid">
+              <label>SRC平台 <select id="f-platform"><option value="butian">补天SRC</option><option value="vulbox">漏洞盒子</option><option value="bytedance">字节跳动SRC</option><option value="meituan">美团SRC</option><option value="bilibili">B站SRC</option><option value="alibaba">阿里巴巴SRC</option><option value="tencent">腾讯SRC</option><option value="custom">自定义</option></select></label>
+              <label>公司名称 <input id="f-company" type="text" placeholder="如：字节跳动" /></label>
+              <label>根域名 <input id="f-domain" type="text" placeholder="如：bytedance.com" /></label>
+              <label>测试范围 <select id="f-scope"><option value="web">Web</option><option value="app">APP</option><option value="miniprogram">小程序</option><option value="all">全部</option></select></label>
+              <label>备注 <input id="f-notes" type="text" placeholder="相关备注信息" /></label>
+              <label class="checkbox-label"><input id="f-authorized" type="checkbox" /> 已获得授权</label>
+            </div>
+            <div class="form-actions">
+              <button id="btn-save-target" type="button">保存</button>
+              <button id="btn-cancel-target" class="ghost" type="button">取消</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 信息搜集 Tab -->
+        <div class="panel src-panel hidden" id="tab-recon" style="grid-column:1/-1">
+          <div class="panel-head">
+            <h2>信息搜集计划</h2>
+          </div>
+          <div class="form-grid">
+            <label>目标域名 <input id="recon-domain" type="text" placeholder="example.com" /></label>
+            <label>公司名称（可选） <input id="recon-company" type="text" placeholder="用于资产穿透分析" /></label>
+          </div>
+          <div class="form-actions">
+            <button id="btn-gen-recon" type="button">生成搜集计划</button>
+            <button id="btn-f5-decode" class="ghost" type="button">F5 LTM解码</button>
+            <button id="btn-dorks" class="ghost" type="button">搜索语法</button>
+          </div>
+          <div id="recon-result" class="detail"></div>
+        </div>
+
+        <!-- 漏洞模板 Tab -->
+        <div class="panel src-panel hidden" id="tab-templates" style="grid-column:1/-1">
+          <div class="panel-head">
+            <h2>漏洞测试模板</h2>
+          </div>
+          <div class="form-grid">
+            <label>功能点类型 <select id="tpl-feature"><option value="">请选择功能点</option><option value="payment">支付/结算</option><option value="login">登录</option><option value="register">注册</option><option value="profile">个人资料</option><option value="upload">文件上传</option><option value="order">订单</option><option value="coupon">优惠券/积分</option><option value="withdraw">提现/转账</option><option value="sms">短信/验证码</option><option value="image">图片/URL</option><option value="api">API接口</option></select></label>
+            <label>参数分析（逗号分隔） <input id="tpl-params" type="text" placeholder="price,qty,userId,code" /></label>
+          </div>
+          <div class="form-actions">
+            <button id="btn-recommend" type="button">推荐模板</button>
+            <button id="btn-analyze-params" class="ghost" type="button">分析参数</button>
+            <button id="btn-all-templates" class="ghost" type="button">查看全部</button>
+          </div>
+          <div id="templates-result" class="detail"></div>
+        </div>
+
+        <!-- 报告生成 Tab -->
+        <div class="panel src-panel hidden" id="tab-report" style="grid-column:1/-1">
+          <div class="panel-head">
+            <h2>SRC 报告生成</h2>
+          </div>
+          <div class="form-grid">
+            <label>漏洞标题 <input id="rpt-title" type="text" placeholder="如：支付金额篡改漏洞" /></label>
+            <label>提交平台 <input id="rpt-platform" type="text" placeholder="如：补天SRC" /></label>
+            <label>目标 <input id="rpt-target" type="text" placeholder="如：xxx.com" /></label>
+            <label>漏洞类型 <select id="rpt-type"><option value="业务逻辑">业务逻辑</option><option value="越权">越权</option><option value="并发">并发</option><option value="支付">支付</option><option value="XSS">XSS</option><option value="SQL注入">SQL注入</option><option value="SSRF">SSRF</option><option value="信息泄露">信息泄露</option><option value="验证码">验证码</option><option value="云安全">云安全</option></select></label>
+            <label>严重程度 <select id="rpt-severity"><option value="critical">严重</option><option value="high">高危</option><option value="medium">中危</option><option value="low">低危</option></select></label>
+          </div>
+          <label style="display:block;margin-top:12px">漏洞概述<textarea id="rpt-summary" rows="3" placeholder="通过修改XXX功能的参数，可以实现XXX效果"></textarea></label>
+          <label style="display:block;margin-top:12px">复现步骤（每行一步）<textarea id="rpt-steps" rows="5" placeholder="1. 打开目标网站&#10;2. 进入XX功能&#10;3. 抓包修改参数&#10;4. 验证结果"></textarea></label>
+          <label style="display:block;margin-top:12px">数据包（可选）<textarea id="rpt-packet" rows="4" placeholder="POST /api/pay HTTP/1.1&#10;Host: xxx.com&#10;..."></textarea></label>
+          <label style="display:block;margin-top:12px">危害说明<textarea id="rpt-impact" rows="2" placeholder="该漏洞可能导致..."></textarea></label>
+          <label style="display:block;margin-top:12px">修复建议（每行一条）<textarea id="rpt-fix" rows="3" placeholder="建议对参数做服务端校验"></textarea></label>
+          <div class="form-actions">
+            <button id="btn-gen-report" type="button">生成报告</button>
+          </div>
+          <div id="report-result" class="detail"></div>
+        </div>
+
+        <!-- 红线提醒 Tab -->
+        <div class="panel src-panel hidden" id="tab-redlines" style="grid-column:1/-1">
+          <div class="panel-head">
+            <h2>红线规则 &amp; 安全检查</h2>
+          </div>
+          <div id="redlines-content"></div>
+          <div style="margin-top:16px">
+            <label>操作描述（检查是否触犯红线） <input id="redline-check-input" type="text" placeholder="描述你要执行的操作..." style="width:100%" /></label>
+            <button id="btn-check-redline" type="button" style="margin-top:8px">检查红线</button>
+          </div>
+          <div id="redline-check-result" class="detail" style="margin-top:12px"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script type="module" src="/src-hunt-app.js?v=20260517"></script>
+</body>
+</html>

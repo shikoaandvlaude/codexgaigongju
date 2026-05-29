@@ -1,0 +1,51 @@
+{
+  "claude-kiro-oauth": [
+    {
+      "customName": "kiro",
+      "checkModelName": "",
+      "checkHealth": false,
+      "concurrencyLimit": 0,
+      "queueLimit": 0,
+      "KIRO_OAUTH_CREDS_FILE_PATH": "",
+      "KIRO_BASE_URL": "",
+      "KIRO_REFRESH_URL": "",
+      "KIRO_REFRESH_IDC_URL": "",
+      "uuid": "6d4287f8-aa7d-4b15-b74d-eb963dcdbcda",
+      "isHealthy": true,
+      "lastUsed": "2026-05-25T12:01:11.484Z",
+      "usageCount": 2,
+      "errorCount": 0,
+      "lastErrorTime": null,
+      "isDisabled": false,
+      "lastErrorMessage": null,
+      "needsRefresh": false,
+      "refreshCount": 0,
+      "lastHealthCheckTime": "2026-05-25T12:00:37.695Z",
+      "lastHealthCheckModel": null,
+      "_lastSelectionSeq": 14,
+      "lastRefreshTime": 1779710446921
+    }
+  ],
+  "openai-codex-oauth": [
+    {
+      "CODEX_OAUTH_CREDS_FILE_PATH": "configs/codex/1779710159458_codex-normakaleem81027@outlook.de_oauth_creds.json",
+      "uuid": "codex-001",
+      "checkModelName": "gpt-5",
+      "checkHealth": false,
+      "isHealthy": true,
+      "isDisabled": false,
+      "lastUsed": "2026-05-25T12:39:15.227Z",
+      "usageCount": 60,
+      "errorCount": 0,
+      "lastErrorTime": null,
+      "lastHealthCheckTime": null,
+      "lastHealthCheckModel": null,
+      "needsRefresh": false,
+      "refreshCount": 0,
+      "lastErrorMessage": null,
+      "customName": null,
+      "_lastSelectionSeq": 75,
+      "lastRefreshTime": 1779712751898
+    }
+  ]
+}

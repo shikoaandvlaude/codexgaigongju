@@ -1,0 +1,141 @@
+# ============================================================
+# CVE/CNVD 审计目标列表
+# 容易出洞的开源 CMS / 框架 / 系统
+# 优先选 star 100-5000 的项目（审计少=洞多）
+# ============================================================
+
+targets:
+  # ─── PHP CMS ─────────────────────────────────────────────
+  - name: "蝉知 CMS (ChanZhiCMS)"
+    repo: "https://github.com/easysoft/chanzhieps"
+    lang: "php"
+    category: "CMS"
+    difficulty: "简单"
+    notes: "国产企业建站CMS，代码质量一般，历史洞多"
+    fingerprint: 'body="chanzhieps" || body="蝉知"'
+
+  - name: "DedeCMS (织梦)"
+    repo: "https://github.com/dedecms/DedeCMS"
+    lang: "php"
+    category: "CMS"
+    difficulty: "简单"
+    notes: "国内最多人用的CMS之一，老代码审计天堂"
+    fingerprint: 'body="DedeCMS" || body="织梦"'
+
+  - name: "JEECG Boot"
+    repo: "https://github.com/jeecgboot/jeecg-boot"
+    lang: "java"
+    category: "低代码平台"
+    difficulty: "中等"
+    notes: "Java低代码平台，用户量大，Java反序列化方向"
+    fingerprint: 'body="JEECG" || title="JeecgBoot"'
+
+  - name: "若依 (RuoYi)"
+    repo: "https://github.com/yangzongzhuan/RuoYi"
+    lang: "java"
+    category: "后台管理"
+    difficulty: "中等"
+    notes: "国产后台管理框架，使用量极大，Shiro相关"
+    fingerprint: 'body="若依" || body="ruoyi"'
+
+  - name: "JFinal CMS"
+    repo: "https://github.com/jflyfox/jfinal_cms"
+    lang: "java"
+    category: "CMS"
+    difficulty: "简单"
+    notes: "JFinal框架CMS，代码简单好审计"
+    fingerprint: 'body="JFinal" || body="jfinal_cms"'
+
+  - name: "Laravel-admin"
+    repo: "https://github.com/z-song/laravel-admin"
+    lang: "php"
+    category: "后台管理"
+    difficulty: "中等"
+    notes: "Laravel后台生成器，关注权限绕过"
+    fingerprint: 'body="laravel-admin"'
+
+  - name: "ThinkCMF"
+    repo: "https://github.com/thinkcmf/thinkcmf"
+    lang: "php"
+    category: "CMS"
+    difficulty: "简单"
+    notes: "基于ThinkPHP的CMS，关注TP老洞变种"
+    fingerprint: 'body="ThinkCMF"'
+
+  # ─── OA 系统 ─────────────────────────────────────────────
+  - name: "信呼 OA"
+    repo: "https://github.com/rainrocka/xinhu"
+    lang: "php"
+    category: "OA系统"
+    difficulty: "简单"
+    notes: "开源OA，功能多接口多，SQL注入/越权高发"
+    fingerprint: 'body="信呼" || body="xinhu"'
+
+  - name: "Dootask"
+    repo: "https://github.com/kuaifan/dootask"
+    lang: "php"
+    category: "项目管理"
+    difficulty: "中等"
+    notes: "开源任务管理，Laravel写的"
+    fingerprint: 'body="dootask"'
+
+  # ─── Python 项目 ─────────────────────────────────────────
+  - name: "Jumpserver (堡垒机)"
+    repo: "https://github.com/jumpserver/jumpserver"
+    lang: "python"
+    category: "安全产品"
+    difficulty: "中等"
+    notes: "国产开源堡垒机，用户量大，历史CVE多"
+    fingerprint: 'body="JumpServer" || title="JumpServer"'
+
+  - name: "Django-Vue-Admin"
+    repo: "https://github.com/liqianglog/django-vue-admin"
+    lang: "python"
+    category: "后台管理"
+    difficulty: "简单"
+    notes: "Django后台模板，关注越权和注入"
+    fingerprint: 'body="django-vue-admin"'
+
+  # ─── Go 项目 ─────────────────────────────────────────────
+  - name: "Gin-Vue-Admin"
+    repo: "https://github.com/flipped-aurora/gin-vue-admin"
+    lang: "go"
+    category: "后台管理"
+    difficulty: "中等"
+    notes: "Go后台框架，关注JWT和权限问题"
+    fingerprint: 'body="gin-vue-admin"'
+
+  - name: "GoAdmin"
+    repo: "https://github.com/GoAdminGroup/go-admin"
+    lang: "go"
+    category: "后台管理"
+    difficulty: "中等"
+    notes: "Go后台管理面板"
+    fingerprint: 'body="GoAdmin"'
+
+  # ─── Node.js 项目 ────────────────────────────────────────
+  - name: "Node-RED"
+    repo: "https://github.com/node-red/node-red"
+    lang: "javascript"
+    category: "IoT平台"
+    difficulty: "中等"
+    notes: "IoT编程平台，功能复杂"
+    fingerprint: 'body="Node-RED" || title="Node-RED"'
+
+  # ─── 物联网/路由器 ───────────────────────────────────────
+  - name: "OpenWrt LuCI"
+    repo: "https://github.com/openwrt/luci"
+    lang: "javascript"
+    category: "路由器"
+    difficulty: "高"
+    notes: "路由器管理界面，关注命令注入"
+    fingerprint: 'body="LuCI" || title="OpenWrt"'
+
+  # ─── 监控/运维 ───────────────────────────────────────────
+  - name: "Hertzbeat"
+    repo: "https://github.com/apache/hertzbeat"
+    lang: "java"
+    category: "监控系统"
+    difficulty: "中等"
+    notes: "Apache孵化项目，监控系统，接口多"
+    fingerprint: 'body="HertzBeat"'

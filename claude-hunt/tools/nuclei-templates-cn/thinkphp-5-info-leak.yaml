@@ -1,0 +1,34 @@
+id: thinkphp-5-info-leak
+
+info:
+  name: ThinkPHP 5.x - Debug Mode Information Leak
+  author: bai-codeagent
+  severity: medium
+  description: |
+    ThinkPHP 5.x 开启调试模式后会暴露完整的错误堆栈、数据库配置、环境变量等敏感信息。
+  tags: thinkphp,info-leak,cn-cms
+
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/index.php?s=xxx"
+      - "{{BaseURL}}/index.php?s=captcha/xxx"
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "ThinkPHP"
+          - "error"
+        condition: and
+      - type: word
+        words:
+          - "DB_HOST"
+          - "DB_NAME"
+          - "DB_USER"
+          - "APP_DEBUG"
+          - "database.php"
+        condition: or
+      - type: status
+        status:
+          - 200
+          - 500

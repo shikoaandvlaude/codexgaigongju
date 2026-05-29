@@ -1,0 +1,30 @@
+{
+  "program": "example-program",
+  "userAgent": "BaiCodeAgent-HackerOne",
+  "maxRequestsPerMinutePerHost": 60,
+  "inScope": [
+    "example.com",
+    "*.example.com"
+  ],
+  "outOfScope": [
+    "jobs.example.com",
+    "*.thirdparty.example.com"
+  ],
+  "excludeTags": [
+    "dos",
+    "fuzz",
+    "bruteforce",
+    "default-login",
+    "credential-stuffing",
+    "intrusive",
+    "xss",
+    "csrf",
+    "open-redirect",
+    "takeover"
+  ],
+  "notes": [
+    "Copy this file to C:\\Users\\admin\\Desktop\\codex\\scopes\\<program>.json.",
+    "Only add assets that the program explicitly lists as in-scope.",
+    "Keep program-specific user-agent and rate-limit requirements here."
+  ]
+}
