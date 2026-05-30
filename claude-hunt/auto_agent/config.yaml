@@ -433,6 +433,31 @@ traffic_controller:
   slowdown_factor: 0.5        # 降速系数（降一半）
 
 
+# ============================================================
+# CNVD 通用型漏洞批量扫描（v2.2 新增，可选模块）
+# ============================================================
+
+# CNVD 扫描器 — 专注国产系统通用型漏洞挖掘
+cnvd_scanner:
+  enabled: false              # 设为 true 启用 CNVD 扫描阶段
+  # FOFA API 配置（或设置环境变量 FOFA_KEY / FOFA_EMAIL）
+  fofa_key: ""
+  fofa_email: ""
+  # 扫描参数
+  timeout: 10                 # HTTP 请求超时（秒）
+  concurrent: 5               # 并发请求数（建议不超过 10）
+  max_targets_per_system: 50  # 每个系统最多收集/扫描目标数
+  delay_between_requests: 2   # 请求间隔（秒），避免触发封禁
+  # 扫描策略
+  priority: "high"            # 默认优先级: high/medium/low
+  auto_report: true           # 达到 CNVD 门槛时自动生成报告
+  min_instances_for_cnvd: 3   # CNVD 通用型最低实例数要求
+  # 目标过滤
+  exclude_domains: []         # 排除的域名列表
+  only_country: "CN"          # 只扫描指定国家
+  # 教育网专项（EDUSRC）
+  edu_mode: false             # 启用教育网专项扫描
+  edu_cert_keyword: "edu.cn"  # 教育网证书关键字
 
 # ============================================================
 # HackerOne / Bug Bounty 合规测试模式（v2.3 新增，可选模块）
