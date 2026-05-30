@@ -431,3 +431,27 @@ traffic_controller:
   # 自适应
   speedup_factor: 1.1         # 提速系数
   slowdown_factor: 0.5        # 降速系数（降一半）
+
+
+
+# ============================================================
+# HackerOne / Bug Bounty 合规测试模式（v2.3 新增，可选模块）
+# ============================================================
+
+h1_mode:
+  enabled: false                # 设为 true 启用合规模式
+  # 会话管理
+  session_ttl_minutes: 120      # 导入的登录态有效期（分钟），过期自动清除
+  auto_sanitize_tokens: true    # 自动脱敏 token 显示
+  store_tokens_locally: false   # 是否将 token 存到本地文件（建议 false）
+  # 默认行为
+  default_platform: "hackerone" # 默认平台: hackerone/bugcrowd/intigriti/butian/edusrc
+  auto_triage: true             # 自动对发现结果打标签
+  compliance_strict: true       # 严格合规（违规直接拦截 vs 只警告）
+  # 报告
+  report_format: "markdown"     # 报告格式: markdown/json
+  report_language: "en"         # 报告语言: en/zh/bilingual
+  auto_cvss: true               # 自动计算 CVSS 评分
+  # 翻译
+  auto_translate_policy: true   # 自动翻译项目规则
+  translation_provider: "llm"   # 翻译方式: llm/dict_only（dict_only 不需要 API）
