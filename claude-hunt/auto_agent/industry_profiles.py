@@ -137,3 +137,77 @@ def get_industry_focus_prompt(industry: str) -> str:
         lines.append(f"\n【重点参数】{', '.join(p['sensitive_params'][:12])}")
     lines.append("\n=== 指南结束 ===")
     return "\n".join(lines)
+
+
+
+# ═══════════════════════════════════════════════════════════
+# EduSRC 专用配置
+# ═══════════════════════════════════════════════════════════
+
+EDUSRC_CONFIG = {
+    "name": "EduSRC 教育漏洞平台",
+    "url": "https://src.sjtu.edu.cn/",
+    "target_systems": [
+        {"name": "统一身份认证(CAS/SSO)", "keywords": ["cas","sso","authserver","ids"], "vuln_rate": 0.4},
+        {"name": "教务系统(正方/青果/强智)", "keywords": ["jwxt","jwgl","jw.","zfsoft","kingosoft"], "vuln_rate": 0.35},
+        {"name": "VPN/WebVPN", "keywords": ["vpn","webvpn","wvpn","sslvpn","easyconnect"], "vuln_rate": 0.3},
+        {"name": "邮件系统", "keywords": ["mail","email","coremail"], "vuln_rate": 0.25},
+        {"name": "OA办公系统", "keywords": ["oa.","seeyon","tongda","weaver"], "vuln_rate": 0.25},
+        {"name": "图书馆系统", "keywords": ["lib","opac","library"], "vuln_rate": 0.2},
+        {"name": "一卡通/缴费", "keywords": ["ecard","card","pay","ykt"], "vuln_rate": 0.2},
+        {"name": "网盘/文件系统", "keywords": ["pan.","cloud","nextcloud"], "vuln_rate": 0.15},
+    ],
+    "tech_stacks": {
+        "正方教务": {"vulns": ["SQL注入","越权查成绩","弱口令"]},
+        "致远OA": {"vulns": ["反序列化RCE","文件上传","SQL注入"]},
+        "通达OA": {"vulns": ["文件上传","SQL注入","未授权"]},
+        "泛微OA": {"vulns": ["SQL注入","SSRF","文件读取"]},
+        "EasyConnect": {"vulns": ["RCE","任意文件读取","信息泄露"]},
+        "Coremail": {"vulns": ["SSRF","XXE","信息泄露"]},
+    },
+    "default_passwords": [
+        "123456","admin","admin123","Aa123456","000000",
+        "{学号}","{身份证后6位}","{身份证后8位}","a123456","qwe123",
+    ],
+    "fofa_dorks": [
+        'domain="edu.cn" && title="登录"',
+        'domain="edu.cn" && body="正方"',
+        'domain="edu.cn" && (title="VPN" || title="WebVPN")',
+        'domain="edu.cn" && (body="致远" || body="seeyon")',
+        'domain="edu.cn" && (body="通达" || title="通达OA")',
+        'domain="edu.cn" && body="Coremail"',
+        'domain="edu.cn" && title="后台"',
+        'cert="edu.cn" && port="8080"',
+    ],
+    "nuclei_priority_tags": [
+        "default-login","weak-password","seeyon","tongda","weaver",
+        "easyconnect","vpn","coremail","sqli","idor","unauth","upload","rce",
+    ],
+}
+
+
+def get_edusrc_config():
+    return EDUSRC_CONFIG
+
+
+def get_edusrc_scan_plan(domain):
+    cfg = EDUSRC_CONFIG
+    lines = [
+        f"# EduSRC 扫描计划: {domain}", "",
+        "## Step 1: 资产发现",
+        f"subfinder -d {domain} | httpx -title -tech-detect", "",
+        "## Step 2: 识别系统类型",
+    ]
+    for s in cfg["target_systems"][:6]:
+        lines.append(f"  - {s['name']} (出洞率~{int(s['vuln_rate']*100)}%)")
+    lines.extend(["", "## Step 3: Nuclei 定向",
+        f"nuclei -l alive.txt -tags {','.join(cfg['nuclei_priority_tags'][:8])} -rl 5", "",
+        "## Step 4: 弱口令",
+        f"默认密码: {', '.join(cfg['default_passwords'][:6])}", "",
+        "## Step 5: 越权（双学号）",
+        "用学号A登录→抓包改学号为B→看到B的数据=越权", "",
+        "## FOFA 搜索",
+    ])
+    for d in cfg["fofa_dorks"][:4]:
+        lines.append(f"  {d}")
+    return "\n".join(lines)
