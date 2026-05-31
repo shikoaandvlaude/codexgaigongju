@@ -6,14 +6,22 @@ Strix (usestrix.com) 特点：
 - 像真人黑客动态测试，不是模式匹配
 - 自动生成 PoC，零误报设计
 - 支持 Web 应用/API/GitHub 仓库/域名/IP 扫描
-- Docker 隔离执行，开源
+- 隔离执行，开源
 
-安装：
+安装（三选一）：
+    # 方式 1: pip（最简单）
     pip install strix-cli
-    # 或 Docker:
+
+    # 方式 2: WSL 内 Docker（推荐，隔离）
+    wsl -d Ubuntu
     docker pull ghcr.io/usestrix/strix:latest
-    # 配置:
+
+    # 方式 3: 本机 Docker Desktop（如果有）
+    docker pull ghcr.io/usestrix/strix:latest
+
+配置：
     export ANTHROPIC_API_KEY=sk-xxx
+    # 或 export OPENAI_API_KEY=sk-xxx
 
 用法：
     from strix_bridge import StrixBridge
@@ -39,7 +47,10 @@ class StrixBridge:
 
     def is_available(self):
         try:
-            cmd = f"{self.strix_exe} --version" if not self.use_docker else f"docker run --rm {self.docker_image} --version"
+            cmd = f"{self.strix_exe} --version"
+            if self.use_docker:
+                # 优先通过 WSL 跑 docker（Windows 没装 Docker Desktop 时）
+                cmd = f"wsl docker run --rm {self.docker_image} --version 2>/dev/null || docker run --rm {self.docker_image} --version"
             r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15)
             return r.returncode == 0
         except Exception:
@@ -62,7 +73,8 @@ class StrixBridge:
 
     def _cmd(self, args):
         if self.use_docker:
-            return f"docker run --rm {self.docker_image} {args}"
+            # 优先 WSL docker，fallback 本机 docker
+            return f"wsl docker run --rm {self.docker_image} {args} 2>/dev/null || docker run --rm {self.docker_image} {args}"
         return f"{self.strix_exe} {args}"
 
     def _run(self, cmd, timeout):

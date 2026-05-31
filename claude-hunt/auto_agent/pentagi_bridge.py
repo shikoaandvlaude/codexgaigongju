@@ -1,18 +1,28 @@
 #!/usr/bin/env python3
 """
-PentAGI Bridge — 全自主 AI 渗透 Agent（Docker 沙箱隔离）
+PentAGI Bridge — 全自主 AI 渗透 Agent（WSL/Docker 沙箱隔离）
 
 PentAGI (vxcontrol) 特点：
-- Docker 隔离执行，不封你真实 IP
+- 隔离执行，不封你真实 IP
 - 自带 nmap/sqlmap/metasploit/nikto/hydra 等全套工具
 - 多 Agent 架构：Researcher + Executor + Reporter
 - 支持任意 LLM，Web UI + API
 
-安装：
+安装（WSL 方式，不需要 Docker Desktop）：
+    # 1. 确保 WSL2 已启用
+    wsl --install  # Windows 上跑一次就行
+
+    # 2. 在 WSL 中安装
+    wsl -d Ubuntu
     git clone https://github.com/vxcontrol/pentagi.git
     cd pentagi && cp .env.example .env
     # 填 OPENAI_API_KEY 或 ANTHROPIC_API_KEY
+    # 在 WSL 内装 docker:
+    sudo apt update && sudo apt install -y docker.io docker-compose-v2
+    sudo service docker start
     docker compose up -d
+
+    # 3. Windows 侧访问: http://localhost:8228
 
 用法：
     from pentagi_bridge import PentAGIBridge
@@ -51,14 +61,37 @@ class PentAGIBridge:
             return False
 
     def start(self):
-        """启动 PentAGI Docker"""
+        """启动 PentAGI（优先 WSL 内 docker，fallback 本机 docker）"""
         if self.is_available():
             return True
         if not os.path.isdir(self.pentagi_dir):
-            return False
+            # 尝试 WSL 路径
+            wsl_path = self.config.get('pentagi', {}).get('wsl_path', '/home/*/pentagi')
+            return self._start_wsl(wsl_path)
+
+        # 本机 docker
         try:
             subprocess.run("docker compose up -d", shell=True,
                           cwd=self.pentagi_dir, capture_output=True, timeout=120)
+            for _ in range(20):
+                time.sleep(3)
+                if self.is_available():
+                    return True
+        except Exception:
+            pass
+
+        # fallback: 通过 WSL 启动
+        return self._start_wsl()
+
+    def _start_wsl(self, wsl_path=None):
+        """通过 WSL 启动 PentAGI"""
+        path = wsl_path or "/root/pentagi"
+        try:
+            # 先启动 WSL 内的 docker 服务
+            subprocess.run(
+                f'wsl -d Ubuntu bash -c "sudo service docker start && cd {path} && docker compose up -d"',
+                shell=True, capture_output=True, timeout=120
+            )
             for _ in range(20):
                 time.sleep(3)
                 if self.is_available():

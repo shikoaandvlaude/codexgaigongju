@@ -705,25 +705,39 @@ for vuln in confirmed_findings:
 
 ---
 
-### PentAGI — Docker 沙箱全自主渗透
+### PentAGI — WSL/Docker 沙箱全自主渗透
 
-> **核心能力**：在 Docker 隔离环境中跑所有重型工具，**不封你真实 IP**
+> **核心能力**：在隔离环境中跑所有重型工具，**不封你真实 IP**
 > **自带工具**：nmap/sqlmap/metasploit/hydra/nikto/masscan/...
 > **开源**：github.com/vxcontrol/pentagi
 
 **解决的问题**：
-- 你怕跑 sqlmap 被封 IP → PentAGI 在 Docker 里跑，用代理出去
+- 你怕跑 sqlmap 被封 IP → PentAGI 在隔离环境里跑，用代理出去
 - 你不想在本机装 metasploit → PentAGI 自带
 - 你想让 AI 自己决定用什么工具打 → PentAGI 的多 Agent 自动编排
 
-**安装**：
+**安装（WSL 方式 — 不需要 Docker Desktop）**：
 ```bash
+# 1. 确保 Windows 有 WSL2
+wsl --install
+
+# 2. 进入 WSL 安装
+wsl -d Ubuntu
+
+# 3. 在 WSL 内装 Docker（不需要 Docker Desktop）
+sudo apt update && sudo apt install -y docker.io docker-compose-v2
+sudo service docker start
+
+# 4. 克隆 PentAGI
 git clone https://github.com/vxcontrol/pentagi.git
 cd pentagi
 cp .env.example .env
-# 填入 OPENAI_API_KEY 或 ANTHROPIC_API_KEY
+# 编辑 .env 填入 OPENAI_API_KEY 或 ANTHROPIC_API_KEY
+
+# 5. 启动
 docker compose up -d
-# 访问 http://localhost:8228 验证
+
+# 6. Windows 侧直接访问: http://localhost:8228
 ```
 
 **在 Claude Code 中使用**：
@@ -762,13 +776,14 @@ result = pb.run_tool("hydra", "-l admin -P /usr/share/wordlists/rockyou.txt targ
 
 **安装**：
 ```bash
-# 方式 1: pip
+# 方式 1: pip（最简单，直接本机跑）
 pip install strix-cli
 
-# 方式 2: Docker（推荐）
+# 方式 2: WSL 内 Docker（推荐隔离）
+wsl -d Ubuntu
 docker pull ghcr.io/usestrix/strix:latest
 
-# 配置 LLM
+# 配置 LLM（任选一个）
 export ANTHROPIC_API_KEY=sk-xxx
 # 或 export OPENAI_API_KEY=sk-xxx
 ```
