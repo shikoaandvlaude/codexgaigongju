@@ -657,3 +657,172 @@ export OPENAI_API_KEY=sk-xxx          # OpenAI
 export LLM_BASE_URL=https://xxx/v1    # 自定义接口
 export LLM_MODEL=gpt-4o               # 自定义模型
 ```
+
+
+
+---
+
+## 集成 AI Agent（Tier 1 — 直接帮你挖洞）
+
+### Shannon — 自主 AI 渗透验证器
+
+> **核心能力**：不只是发现漏洞，**证明漏洞** — 自动发 exploit 验证
+> **XBOW 基准**：96.15%（业界最高）
+> **开源**：github.com/KeygraphHQ/shannon
+
+**4 阶段自动执行**：侦察 → 并行漏洞分析 → 并行利用 → 生成报告
+
+**安装**：
+```bash
+# 白盒模式（有源码时效果最好）
+git clone https://github.com/KeygraphHQ/shannon.git
+cd shannon && ./shannon setup
+
+# 黑盒模式（SRC 挖洞推荐这个 fork）
+git clone https://github.com/Steake/shannon-uncontained.git
+```
+
+**在 Claude Code 中使用**：
+```python
+from shannon_bridge import ShannonBridge
+sb = ShannonBridge()
+
+# 完整渗透（Shannon 自己做侦察→分析→利用→报告）
+result = sb.pentest("https://target.com")
+print(f"证明了 {result['exploits_proven']} 个漏洞")
+
+# 对 auto_hunt 发现的漏洞做 exploit 验证
+for vuln in confirmed_findings:
+    proof = sb.verify_finding(vuln, "https://target.com")
+    if proof["verified"]:
+        print(f"🔥 {vuln['type']} 验证通过！证据：{proof['proof'][:100]}")
+```
+
+**适合场景**：
+- auto_hunt 发现了疑似漏洞但不确定是否可利用 → Shannon 真打验证
+- 有源码的目标 → Shannon 白盒分析更准
+- H1 报告需要 PoC → Shannon 自动生成
+
+---
+
+### PentAGI — Docker 沙箱全自主渗透
+
+> **核心能力**：在 Docker 隔离环境中跑所有重型工具，**不封你真实 IP**
+> **自带工具**：nmap/sqlmap/metasploit/hydra/nikto/masscan/...
+> **开源**：github.com/vxcontrol/pentagi
+
+**解决的问题**：
+- 你怕跑 sqlmap 被封 IP → PentAGI 在 Docker 里跑，用代理出去
+- 你不想在本机装 metasploit → PentAGI 自带
+- 你想让 AI 自己决定用什么工具打 → PentAGI 的多 Agent 自动编排
+
+**安装**：
+```bash
+git clone https://github.com/vxcontrol/pentagi.git
+cd pentagi
+cp .env.example .env
+# 填入 OPENAI_API_KEY 或 ANTHROPIC_API_KEY
+docker compose up -d
+# 访问 http://localhost:8228 验证
+```
+
+**在 Claude Code 中使用**：
+```python
+from pentagi_bridge import PentAGIBridge
+pb = PentAGIBridge()
+
+# 全自动渗透（PentAGI 自己决定策略）
+result = pb.auto_pentest("target.com")
+
+# 安全跑 sqlmap（Docker沙箱里，不封你IP）
+result = pb.sqlmap_safe("http://target.com/page?id=1", level=5, risk=3)
+
+# 下发任意渗透任务
+result = pb.execute_task("对 10.0.0.0/24 做内网横向移动测试")
+
+# 跑指定工具
+result = pb.run_tool("nmap", "-sV -sC -p- target.com")
+result = pb.run_tool("hydra", "-l admin -P /usr/share/wordlists/rockyou.txt target.com ssh")
+```
+
+**适合场景**：
+- 需要跑 sqlmap/hydra/masscan 等重型扫描（怕封 IP）
+- 内网渗透（PentAGI Docker 可配代理进内网）
+- 需要 metasploit 自动利用
+
+---
+
+### Strix — 快速 AI 渗透扫描器
+
+> **核心能力**：像真人黑客动态测试，**自动生成 PoC**，零误报设计
+> **速度**：比 Shannon 快（适合初始大面积扫描）
+> **开源**：github.com/usestrix/strix
+
+**支持扫描类型**：Web URL / API / GitHub 仓库 / 域名 / IP
+
+**安装**：
+```bash
+# 方式 1: pip
+pip install strix-cli
+
+# 方式 2: Docker（推荐）
+docker pull ghcr.io/usestrix/strix:latest
+
+# 配置 LLM
+export ANTHROPIC_API_KEY=sk-xxx
+# 或 export OPENAI_API_KEY=sk-xxx
+```
+
+**在 Claude Code 中使用**：
+```python
+from strix_bridge import StrixBridge
+sb = StrixBridge()
+
+# 快速扫描 Web 应用
+result = sb.scan_url("https://target.com")
+print(f"发现 {result['critical_high']} 个高危，{len(result['pocs'])} 个有 PoC")
+
+# 扫描整个域名（含子域名发现）
+result = sb.scan_domain("target.com")
+
+# 扫描 GitHub 仓库（白盒 SAST + 动态验证）
+result = sb.scan_repo("https://github.com/org/repo")
+
+# 只测特定漏洞类型
+result = sb.scan_url("https://target.com", focus=["sqli", "idor", "ssrf"])
+```
+
+**适合场景**：
+- 新目标初始扫描（快速覆盖全面）
+- CI/CD 集成（每次部署自动测）
+- 需要 PoC 的报告提交
+
+---
+
+### 三者配合使用（推荐工作流）
+
+```
+① Strix 快扫（3分钟）→ 发现攻击面 + 低级漏洞
+② auto_hunt 深度挖掘（20分钟）→ 逻辑漏洞 + 组链
+③ Shannon 验证（5分钟/漏洞）→ 真打出 PoC
+④ PentAGI 辅助（需要重型工具时）→ sqlmap/metasploit
+
+效率最大化：
+  Strix 广度覆盖 + auto_hunt 深度 + Shannon 证明 + PentAGI 执行
+```
+
+**config.yaml 配置**：
+```yaml
+# Tier 1 Agents
+shannon:
+  path: "~/shannon-uncontained"  # Shannon 安装路径
+
+pentagi:
+  api_url: "http://localhost:8228"  # PentAGI API
+  path: "~/pentagi"
+
+strix:
+  path: "strix"         # strix CLI 路径
+  docker: false          # 是否用 Docker 运行
+  image: "ghcr.io/usestrix/strix:latest"
+```
