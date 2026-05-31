@@ -215,3 +215,15 @@ class BountyRejectionFilter:
 
     def _kw_match(self, key, text):
         return all(p in text for p in key.replace("_", " ").split())
+
+    def tag_finding(self, finding: dict) -> str:
+        """
+        只标注不删除 — 返回标注文本（空字符串表示无需标注）。
+        用于保留所有线索供组链使用。
+        """
+        result = self.check(finding)
+        if result["rejected"]:
+            return f"[平台可能不收] {result['reason']}"
+        elif result["category"] == "conditional":
+            return f"[需补充证明] {result['advice']}"
+        return ""

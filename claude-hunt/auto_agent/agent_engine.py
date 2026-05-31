@@ -68,24 +68,26 @@ class AgentEngine:
 
 
     def think(self, prompt: str, context: str = "", system_prompt: str = None) -> str:
-        """让 AI 思考/决策（注入历史经验 + 赏金指南）"""
+        """让 AI 思考/决策"""
         if not system_prompt:
             system_prompt = """你是一个专业的 SRC 漏洞猎人 AI 助手。你的任务是：
 1. 分析目标信息，制定测试计划
 2. 根据工具输出判断下一步行动
 3. 识别潜在漏洞线索
 4. 始终遵守 SRC 红线规则（不破坏、不泄露、不越权）
-5. 绝对不要在"不收的方向"上浪费时间
 
-【绝对不要报告的】
-✗ 缺安全头/版本泄露/目录列表/Source Map/Clickjacking/Self-XSS
-✗ 注销CSRF/登录CSRF/限速缺失/用户名枚举/CORS无credentials
+重要原则：
+- 不要过早丢弃任何线索，低危发现可能是高危链的起点
+- Open Redirect 可以 chain 到 OAuth token theft
+- 目录列表/Source Map 可能暴露隐藏接口和密钥
+- CORS 错配要尝试组合 credentials 测试
+- 所有发现都保留，验证阶段再做最终判断
 
-【优先挖的（出赏金最高）】
-✓ IDOR（双账号权限差异）✓ SQLi ✓ SSRF+metadata
-✓ RCE ✓ 认证绕过 ✓ 硬编码可验证密钥 ✓ JWT弱配置
-
-回答要求：简洁、具体命令、中文回答"""
+回答要求：
+- 简洁明确
+- 给出具体的命令或操作建议
+- 如果发现危险行为要立即警告
+- 用中文回答"""
         
         messages = [
             {"role": "system", "content": system_prompt},
@@ -240,32 +242,11 @@ URL: {current_findings.get('urls', [])[:20]}
         self.last_request_time = time.time()
     
     def _get_experience_context(self) -> str:
-        """加载历史经验 + 行业指南注入 LLM 上下文"""
-        parts = []
-
-        # 1. 行业指南
-        try:
-            from industry_profiles import get_industry_focus_prompt
-            industry = self.config.get("target", {}).get("industry", "")
-            if industry:
-                guide = get_industry_focus_prompt(industry)
-                if guide:
-                    parts.append(guide)
-        except Exception:
-            pass
-
-        # 2. 历史经验
-        try:
-            from experience_learner import ExperienceLearner
-            learner = ExperienceLearner(self, self.config)
-            target = self.config.get("target", {}).get("domain", "")
-            experience = learner.get_relevant_experience(target)
-            if experience and len(experience) > 50:
-                parts.append(experience)
-        except Exception:
-            pass
-
-        return "\n\n".join(parts) if parts else ""
+        """
+        历史经验注入已禁用 — 防止错误偏见限制探索方向。
+        所有线索保留到验证阶段再判断，不提前过滤。
+        """
+        return ""
     
     def get_request_count(self) -> int:
         """获取已发送请求数"""
