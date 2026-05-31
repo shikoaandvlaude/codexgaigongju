@@ -45,14 +45,35 @@
 
 ---
 
-## 重要原则
+## 重要原则（禁令已削弱 — 以出结果为优先）
 
-1. **不限制任何漏洞类型** — 所有发现都保留，不过早过滤
-2. **低危可能是高危链的起点** — Open Redirect + OAuth = ATO
-3. **防封 IP** — 每个请求随机延迟，不用 sqlmap，不暴力扫
-4. **证据闭环** — 每个发现都要有可复现的 curl 命令
-5. **Scope 合规** — 提交前检查是否在 scope 内、是否在排除项中
-6. **30 分钟没进展就换目标** — 不死磕
+1. **绝不过滤任何发现** — 所有线索都存，不管看起来"能不能交"
+2. **report_gate 只在你说"准备提交"时才启用** — 探索阶段永远不过滤
+3. **低危全保留** — Open Redirect / CORS / 信息泄露 / UAT 泄露 / APK 配置 / rate limit 缺失 — 全存
+4. **它们可能是链的一环** — 单独不收≠没价值，A+B=Critical
+5. **防封 IP（这个要遵守）** — 随机延迟、不暴力、连续 403 暂停
+6. **防封号（这个要遵守）** — 不改别人数据、不删别人东西、不影响生产
+7. **证据闭环** — 每个发现存 curl + 响应 + 时间，不存的等于没发现
+8. **30 分钟没进展 → stop-loss** — 换目标或换方向
+9. **发现 ≠ 报告** — 先贪婪收集，最后才决定提交哪些
+10. **宁多存不漏存** — 100 条线索里 1 条能交 = 成功
+
+### 什么时候才过滤
+
+```
+探索阶段: 全存，零过滤
+分析阶段: 标注 reportability label（report-ready / needs-auth / needs-chain / excluded）
+提交阶段: 只有标 report-ready 且通过 scope_resolver 的才建议提交
+```
+
+### 每个发现必须标注
+
+```
+- reportability: report-ready / needs-auth / needs-chain / needs-poc / excluded
+- evidence: 有没有 curl + 响应
+- scope: in-scope / out-of-scope / unknown
+- chain_potential: 能不能跟别的发现组链
+```
 
 ---
 

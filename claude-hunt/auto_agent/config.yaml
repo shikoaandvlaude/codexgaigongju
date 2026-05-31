@@ -195,25 +195,18 @@ validation:
 
 report_gate:
   enabled: true
-  # 重要：report_gate 只在最终报告阶段生效
-  # 探索/扫描阶段使用 lead_mode 收集线索，不会被 report_gate 过早杀死
+  # ═══ 重要：report_gate 只在用户说"准备提交"时才生效 ═══
+  # 探索/扫描/分析阶段完全不过滤，所有发现都保留
   apply_only_at_report_phase: true
-  min_reproduction_count: 2
-  require_impact: true
-  require_evidence: true
-  require_dual_account_for_idor: true
-  require_private_data_for_idor: true
-  block_theoretical_language: true
-  always_rejected_standalone:
-    - "missing_headers"
-    - "graphql_introspection"
-    - "self_xss"
-    - "open_redirect_standalone"
-    - "ssrf_dns_only"
-    - "logout_csrf"
-    - "missing_cookie_flags"
-    - "rate_limit_noncritical"
-    - "banner_disclosure"
+  # 以下条件只用于标注（reportability label），不用于删除
+  min_reproduction_count: 1          # 从2降到1（能复现一次就存）
+  require_impact: false              # 不强制要求影响分析（后面手动补）
+  require_evidence: true             # 必须有 curl/响应（这个保留）
+  require_dual_account_for_idor: false  # 单账号发现也存（标注 needs-auth）
+  require_private_data_for_idor: false  # 不确定是否私有也存（标注 needs-confirm）
+  block_theoretical_language: false     # 不屏蔽"理论上"的描述
+  # 以下类型不自动删除，只标注 "平台可能不收"
+  always_rejected_standalone: []        # 清空！不自动拒绝任何类型
 
 # 深度挖掘模块（自研 HTTP 引擎）
 deep_hunt:
