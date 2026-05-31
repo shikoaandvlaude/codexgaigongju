@@ -1,6 +1,7 @@
 # Auto-Hunt Agent Phases
 from .recon import ReconPhase
 from .params import ParamPhase
+from .extended_scan import ExtendedScanPhase
 from .hunt import HuntPhase
 from .chain import ChainPhase
 from .critical_hunt import CriticalHuntPhase

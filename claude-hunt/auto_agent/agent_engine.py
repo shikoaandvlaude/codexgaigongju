@@ -234,11 +234,14 @@ URL: {current_findings.get('urls', [])[:20]}
             return {"action": "phase_complete", "reason": response}
     
     def _rate_limit(self):
-        """限速：确保请求间隔"""
-        min_interval = 1.0 / self.rate_config.get('requests_per_second', 3)
+        """限速：确保请求间隔 + 随机抖动防指纹"""
+        import random
+        min_interval = 1.0 / self.rate_config.get('requests_per_second', 2)
+        jitter = random.uniform(0.3, 1.5)
         elapsed = time.time() - self.last_request_time
-        if elapsed < min_interval:
-            time.sleep(min_interval - elapsed)
+        wait = min_interval + jitter - elapsed
+        if wait > 0:
+            time.sleep(wait)
         self.last_request_time = time.time()
     
     def _get_experience_context(self) -> str:

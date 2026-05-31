@@ -2,6 +2,7 @@
 
 import re
 import time
+import random
 import sys
 import os
 
@@ -81,8 +82,10 @@ class BasePhase:
         elif not result["success"]:
             console.print(f"    [red]✗ 失败[/red]")
         
-        # 限速
-        time.sleep(self.engine.config.get('rate_limit', {}).get('delay_between_phases', 2))
+        # 限速 + 随机延迟（防止被 WAF/IDS 基于固定间隔指纹识别）
+        base_delay = self.engine.config.get('rate_limit', {}).get('delay_between_phases', 3)
+        jitter = random.uniform(0.5, 2.5)  # 随机抖动 0.5~2.5 秒
+        time.sleep(base_delay + jitter)
     
     def _record_status_codes(self, result: dict):
         """
@@ -126,13 +129,14 @@ class BasePhase:
         """检查命令是否安全（增强版）"""
         # 绝对禁止的命令/模式
         dangerous = [
-            'rm -rf', 'rm -f /', 'mkfs', 'dd if=',
+            'sqlmap', 'rm -rf', 'rm -f /', 'mkfs', 'dd if=',
             ':(){', 'fork bomb', '> /dev/sda',
             'wget -O', 'curl -o',  # 防止覆盖文件
             '> /', 'sudo', 'chmod 777',
             'eval ', 'exec ', 'python -c', 'python3 -c',
             'bash -c', 'sh -c',  # 防止嵌套 shell
             '/etc/passwd', '/etc/shadow',
+            'nc ', 'ncat ', 'socat ',  # 防止反弹shell
         ]
         command_lower = command.lower()
         for d in dangerous:

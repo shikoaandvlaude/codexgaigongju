@@ -34,6 +34,7 @@ from experience_learner import ExperienceLearner
 from bounty_rejection_filter import BountyRejectionFilter
 from phases.recon import ReconPhase
 from phases.params import ParamPhase
+from phases.extended_scan import ExtendedScanPhase
 from phases.hunt import HuntPhase
 from phases.chain import ChainPhase
 from phases.critical_hunt import CriticalHuntPhase
@@ -290,6 +291,7 @@ def run_agent(target, mode, config):
     phases = [
         ReconPhase(engine, logger, redline, tracer, mode),
         ParamPhase(engine, logger, redline, tracer, mode),
+        ExtendedScanPhase(engine, logger, redline, tracer, mode),
         HuntPhase(engine, logger, redline, tracer, mode),
         ChainPhase(engine, logger, redline, tracer, mode),
         CriticalHuntPhase(engine, logger, redline, tracer, mode),

