@@ -1097,3 +1097,159 @@ config["idor"]["cookie_a"] = cookies
 
 一个号只能打左边这些（竞争大、赏金低）。
 双号能打右边这些（竞争小、赏金高、你的工具全覆盖）。
+
+
+
+---
+
+## 顶级猎人工作流模块
+
+> 这些模块模拟专业赏金猎人的思维方式，让 Claude Code 像职业选手一样工作。
+
+### Project Fit Scorer — 项目值不值得打
+
+**专业猎人不会随机选项目**。他们先评估：
+
+```python
+from project_fit_scorer import ProjectFitScorer
+scorer = ProjectFitScorer()
+
+# 从 H1 自动拉信息并评分（满分100）
+result = scorer.score_h1_program("shopify")
+print(f"得分: {result['score']} — {result['verdict']}")
+# 输出: 得分: 82 — GO — 高价值目标
+
+# 评分维度：
+# - 赏金活跃度（最近有人拿过钱吗）
+# - 攻击面大小（API/GraphQL/通配符域名/移动端）
+# - 注册难度（要不要 KYC）
+# - 工具适配（你的工具擅不擅长打这个）
+# - 排除项（常见洞被堵了多少）
+```
+
+**评分结果**：
+- 70+ = GO（高价值，值得花半天打）
+- 50-69 = MAYBE（花 2 小时试试）
+- 30-49 = LOW（没别的可打时再考虑）
+- <30 = SKIP（别浪费时间）
+
+---
+
+### AuthZ Matrix — 权限矩阵自动生成
+
+**这是顶级猎人和普通人的最大区别** — 他们不是跑扫描器，而是建权限矩阵。
+
+三视角对比：
+1. **无账号**：哪些端点裸奔（不需要登录就能拿到数据）
+2. **单账号**：登录后能访问什么（对比登录/未登录差异）
+3. **双账号**（可选）：A 能不能看到 B 的数据
+
+```python
+from authz_matrix import AuthZMatrix
+am = AuthZMatrix(config)
+
+# 全自动：发现端点 → 三视角探测 → 找越权
+matrix = am.auto_discover_and_test(
+    "https://target.com",
+    cookie_a="vlaudevv@wearehackerone.com 的 Cookie",
+    cookie_b="谷歌邮箱的 Cookie",
+)
+
+# 看结果
+for finding in matrix["findings"]:
+    print(f"[{finding['severity']}] {finding['type']}: {finding['endpoint']}")
+
+# 只有单账号也能跑（对比登录 vs 未登录）
+matrix = am.build_single("https://target.com", endpoints, cookie)
+
+# 完全无账号也能跑（找裸奔的端点）
+baseline = am.build_unauthenticated("https://target.com", endpoints)
+```
+
+**能发现的问题**：
+- `UNAUTHENTICATED_ACCESS` — 未登录就能拿业务数据（Critical）
+- `POTENTIAL_IDOR` — 双账号返回不同数据量（High）
+- `VERTICAL_PRIVESC` — 普通账号访问 admin 接口（Critical）
+
+---
+
+### Evidence Store — 证据自动保存
+
+**H1 拒稿最常见原因：没有可复现的 PoC**。这个模块自动保存一切。
+
+```python
+from evidence_store import EvidenceStore
+es = EvidenceStore(config)
+
+# 保存证据（auto_hunt 自动调用）
+eid = es.save(
+    finding={"type": "IDOR", "url": "...", "severity": "high", "detail": "..."},
+    command="curl -H 'Cookie: ...' https://target.com/api/user/123",
+    output="返回了别人的数据...",
+    target="target.com",
+    scope_reason="*.target.com 在 H1 scope 中",
+    not_excluded_reason="IDOR 不在排除项列表中",
+)
+
+# 一键生成 H1 格式报告（直接复制粘贴提交）
+report = es.generate_h1_report(eid)
+print(report)
+# 输出完整的 Markdown 报告：Summary / Steps / Command / Impact / Scope
+```
+
+**报告包含**：
+- 漏洞类型 + 严重度
+- 复现步骤（1-2-3）
+- curl 命令（直接可跑）
+- 影响分析（谁受影响/攻击者能干什么）
+- Scope 合规（为什么在 scope/为什么不是排除项）
+
+---
+
+### 完整工作流（Claude Code 自动执行）
+
+```
+1. scorer.score_h1_program("target") → 判断值不值得打
+   ↓ 得分 > 50
+2. asset_engines.search_all("target.com") → 拉全网资产
+   ↓
+3. auto_hunt.py → 10 阶段全自动扫描
+   ↓
+4. authz_matrix.auto_discover_and_test() → 权限矩阵
+   ↓ 发现越权
+5. shannon.verify_finding() → 真打验证
+   ↓ 确认
+6. evidence_store.save() → 保存证据
+   ↓
+7. evidence_store.generate_h1_report() → 生成报告
+   ↓
+8. 你复制粘贴到 H1 提交
+```
+
+**你只需要**：给 Claude Code 一个目标名，它自己跑完 1-7，你做第 8 步。
+
+---
+
+### 与普通扫描器的区别
+
+| 普通工具 | 你的工具（加了这些模块后） |
+|---------|--------------------------|
+| 扫一堆 nuclei 模板 | 先评估项目值不值得打 |
+| 有漏洞就报 | 先建权限矩阵找真正的越权 |
+| 报告只有一行 | 自动生成完整 H1 格式 PoC |
+| 不知道什么能提交 | Scope Resolver 实时判断 |
+| 误报一堆 | 三视角对比减少误报 |
+| 打完就忘 | 经验自动进化（Hermes） |
+
+---
+
+### 参考的开源项目
+
+| 项目 | 学了什么 |
+|------|---------|
+| **AuthMatrix** | 权限矩阵设计思路 |
+| **Autorize** | 自动鉴权对比（登录/未登录重放） |
+| **BBOT** | 模块化 recon + 事件流 |
+| **reconFTW** | BB recon 流水线串联 |
+| **MobSF** | 移动端分析报告结构 |
+| **mitmproxy** | 流量捕获和证据沉淀 |
