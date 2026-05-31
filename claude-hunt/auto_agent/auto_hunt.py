@@ -491,27 +491,33 @@ def run_agent(target, mode, config):
                 f"线索收集完成: {summary['total']} 条线索, "
                 f"待测清单: {plan_path}")
 
-        # 现在应用严格过滤（report_gate 只在这里生效）
+        # 现在应用误报标注（不再删除，改为标记 + 保留）
+        # 所有发现保留供后续手动组链判断
         fp_filter = FalsePositiveFilter(engine, logger, config)
         original_count = len(findings['vulnerabilities'])
-        findings['vulnerabilities'] = fp_filter.apply_filter(findings['vulnerabilities'], mode)
-        filtered_count = original_count - len(findings['vulnerabilities'])
-        if filtered_count > 0:
-            console.print(f"\n[yellow]误报过滤: 移除了 {filtered_count} 个可疑误报"
-                         f"（线索已保存，不会丢失）[/yellow]")
+        # 只做评分标注，不删除
+        fp_filter.filter_vulnerabilities(findings['vulnerabilities'])
+        low_conf_count = sum(1 for v in findings['vulnerabilities'] 
+                           if v.get('confidence', 80) < fp_filter.auto_threshold)
+        if low_conf_count > 0:
+            console.print(f"\n[yellow]误报标注: {low_conf_count} 个发现置信度较低"
+                         f"（已标注，保留用于组链分析）[/yellow]")
 
-        # ═══ 赏金不收过滤（防止提交垃圾报告）═══
+        # ═══ 赏金平台标注（仅标记，不删除 — 让人工最终决策）═══
+        # 不再自动删除"平台不收"的发现，因为：
+        # 1. 低危发现可能是高危 chain 的组成部分
+        # 2. 国内 SRC 和国外 H1 规则不同
+        # 3. 人工判断是否能组链后再决定是否提交
         bounty_platform = config.get('target', {}).get('bounty_platform', 'hackerone')
         brf = BountyRejectionFilter(platform=bounty_platform)
         if findings.get('vulnerabilities'):
-            before_bounty = len(findings['vulnerabilities'])
-            findings['vulnerabilities'], bounty_rejected = brf.filter_findings(findings['vulnerabilities'])
-            if bounty_rejected:
-                console.print(f"\n[yellow]赏金过滤: 移除了 {len(bounty_rejected)} 个平台不收的发现:[/yellow]")
-                for r in bounty_rejected[:5]:
-                    console.print(f"    ✗ {r.get('type', '?')}: {r.get('bounty_rejection', {}).get('reason', '')[:60]}")
-                logger.log_event("BOUNTY_FILTER",
-                    f"移除 {len(bounty_rejected)} 个不收的发现（信息泄露/弱配置等）")
+            for vuln in findings['vulnerabilities']:
+                tag = brf.tag_finding(vuln)
+                if tag:
+                    vuln['bounty_note'] = tag  # 只标注，不删除
+            tagged_count = sum(1 for v in findings['vulnerabilities'] if v.get('bounty_note'))
+            if tagged_count > 0:
+                console.print(f"\n[yellow]赏金标注: {tagged_count} 个发现被标记为'平台可能不收'（保留用于组链）[/yellow]")
     
     # ═══ 提交前情报查重 ═══
     vulns = [v for v in findings.get('vulnerabilities', []) if v.get('verified_4proof')]
@@ -525,70 +531,52 @@ def run_agent(target, mode, config):
     # 写日志尾
     logger.write_footer(findings)
     
-    # ═══ 自我进化：复盘学习 ═══
-    try:
-        learner = ExperienceLearner(engine, config)
-        console.print(f"\n{'='*50}")
-        console.print("[bold cyan]复盘学习 (Experience Learning)[/bold cyan]")
-        console.print(f"{'='*50}\n")
+    # ═══ 自我进化：复盘学习（已禁用 — 防止错误偏见限制探索）═══
+    # ExperienceLearner 会把"某次没找到洞"记录为"此方向无效"，
+    # 导致下次跳过可能有洞的方向。暂时禁用，待手动验证经验质量后再启用。
+    # 如需启用，将 if False 改为 if True。
+    if False:
+        try:
+            learner = ExperienceLearner(engine, config)
+            console.print(f"\n{'='*50}")
+            console.print("[bold cyan]复盘学习 (Experience Learning)[/bold cyan]")
+            console.print(f"{'='*50}\n")
 
-        # 获取线索摘要（如果有）
-        leads_summary_data = None
-        if lead_config.get('enabled', True):
-            try:
-                lc = LeadCollector(config)
-                leads_summary_data = lc.get_summary() if lc.leads else None
-            except Exception:
-                pass
+            # 获取线索摘要（如果有）
+            leads_summary_data = None
+            if lead_config.get('enabled', True):
+                try:
+                    lc = LeadCollector(config)
+                    leads_summary_data = lc.get_summary() if lc.leads else None
+                except Exception:
+                    pass
 
-        # 运行统计
-        import time as _time
-        run_stats = {
-            "total_requests": engine.get_request_count(),
-            "waf_type": waf_result.get("strategy", {}).get("name", "unknown") if 'waf_result' in dir() else "unknown",
-        }
+            # 运行统计
+            import time as _time
+            run_stats = {
+                "total_requests": engine.get_request_count(),
+                "waf_type": waf_result.get("strategy", {}).get("name", "unknown") if 'waf_result' in dir() else "unknown",
+            }
 
-        # 调用 LLM 做复盘
-        review_result = learner.post_hunt_review(
-            target=target,
-            findings=findings,
-            leads_summary=leads_summary_data,
-            run_stats=run_stats,
-        )
+            # 调用 LLM 做复盘
+            review_result = learner.post_hunt_review(
+                target=target,
+                findings=findings,
+                leads_summary=leads_summary_data,
+                run_stats=run_stats,
+            )
 
-        if review_result and not review_result.get("error"):
-            console.print(f"  [green]✓ 复盘完成[/green]")
-            # 显示学到的东西
-            new_patterns = review_result.get("new_patterns", [])
-            if new_patterns:
-                console.print(f"  [bold]学到 {len(new_patterns)} 条新经验:[/bold]")
-                for p in new_patterns[:5]:
-                    console.print(f"    [{p.get('priority', '?')}] {p.get('pattern', '')[:60]}")
-            
-            wasted = review_result.get("wasted_effort", [])
-            if wasted:
-                console.print(f"  [yellow]识别到 {len(wasted)} 个浪费时间的操作（下次避免）[/yellow]")
-
-            skill = review_result.get("skill_suggestion", {})
-            if skill and skill.get("name"):
-                console.print(f"  [cyan]生成新 Skill: {skill['name']}[/cyan]")
-
-            advice = review_result.get("next_time_advice", "")
-            if advice:
-                console.print(f"\n  [bold]下次建议: {advice}[/bold]")
-
-            # 显示经验库统计
-            stats = learner.get_experience_stats()
-            console.print(f"\n  经验库: {stats['total_patterns']} 条模式 / "
-                         f"{stats['generated_skills']} 个 Skill / "
-                         f"{stats['waste_patterns']} 个避免项")
-        else:
-            console.print(f"  [dim]复盘跳过（LLM 未返回有效结果）[/dim]")
-
-        logger.log_event("EXPERIENCE", f"复盘完成: {json.dumps(review_result, ensure_ascii=False)[:200]}")
-
-    except Exception as e:
-        console.print(f"  [dim]复盘异常（不影响主流程）: {e}[/dim]")
+            if review_result and not review_result.get("error"):
+                console.print(f"  [green]✓ 复盘完成[/green]")
+                new_patterns = review_result.get("new_patterns", [])
+                if new_patterns:
+                    console.print(f"  [bold]学到 {len(new_patterns)} 条新经验:[/bold]")
+                    for p in new_patterns[:5]:
+                        console.print(f"    [{p.get('priority', '?')}] {p.get('pattern', '')[:60]}")
+            else:
+                console.print(f"  [dim]复盘跳过（LLM 未返回有效结果）[/dim]")
+        except Exception as e:
+            console.print(f"  [dim]复盘异常（不影响主流程）: {e}[/dim]")
     
     # 最终汇总
     console.print(f"\n{'='*50}")
