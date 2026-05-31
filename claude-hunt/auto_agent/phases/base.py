@@ -126,7 +126,7 @@ class BasePhase:
         """检查命令是否安全（增强版）"""
         # 绝对禁止的命令/模式
         dangerous = [
-            'sqlmap', 'rm -rf', 'rm -f /', 'mkfs', 'dd if=',
+            'rm -rf', 'rm -f /', 'mkfs', 'dd if=',
             ':(){', 'fork bomb', '> /dev/sda',
             'wget -O', 'curl -o',  # 防止覆盖文件
             '> /', 'sudo', 'chmod 777',

@@ -212,6 +212,16 @@ def run_agent(target, mode, config):
     elif mode == "auto":
         asset_result = asset_disc.discover(target, company_name)
     
+    # 全局发现汇总（提前初始化，APP Recon 需要用到）
+    findings = {
+        "subdomains": [],
+        "alive_hosts": [],
+        "urls": [],
+        "params": [],
+        "vulnerabilities": [],
+        "secrets": [],
+    }
+    
     # ═══ APP/IoT 目标检测 ═══
     target_type = detect_target_type(target)
     if target_type == "app":
@@ -289,15 +299,7 @@ def run_agent(target, mode, config):
         ReportPhase(engine, logger, redline, tracer, mode),
     ]
     
-    # 全局发现汇总
-    findings = {
-        "subdomains": [],
-        "alive_hosts": [],
-        "urls": [],
-        "params": [],
-        "vulnerabilities": [],
-        "secrets": [],
-    }
+    # findings 已在 APP Recon 前初始化，这里不重复
     
     step_count = 0
     start_phase_index = 0

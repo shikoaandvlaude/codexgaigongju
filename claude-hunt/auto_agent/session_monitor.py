@@ -4,6 +4,7 @@ Session Monitor — 账号状态监控模块
 """
 
 import time
+from shell_utils import shell_quote
 
 
 class SessionMonitor:
@@ -39,11 +40,13 @@ class SessionMonitor:
         self.last_check_step = step_count
 
         # 发一个请求到已知正常页面
+        safe_cookie = self.cookie.replace('"', '\\"').replace('`', '').replace('$', '')
+        safe_url = shell_quote(self.check_url)
         cmd = (
             f'curl -s -o /dev/null -w "%{{http_code}}" '
-            f'-H "Cookie: {self.cookie}" '
+            f'-H "Cookie: {safe_cookie}" '
             f'-H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" '
-            f'"{self.check_url}"'
+            f'{safe_url}'
         )
 
         result = self.engine.execute_command(cmd, timeout=15)
@@ -59,9 +62,9 @@ class SessionMonitor:
             if self.expected_keyword:
                 content_cmd = (
                     f'curl -s '
-                    f'-H "Cookie: {self.cookie}" '
+                    f'-H "Cookie: {safe_cookie}" '
                     f'-H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" '
-                    f'"{self.check_url}" | head -100'
+                    f'{safe_url} | head -100'
                 )
                 content_result = self.engine.execute_command(content_cmd, timeout=15)
                 if content_result["success"]:

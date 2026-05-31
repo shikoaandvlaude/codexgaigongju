@@ -56,7 +56,8 @@ def safe_echo_lines(lines: list, max_lines: int = 100) -> str:
         os.close(fd)
         return "echo ''"
     
-    return f"cat {shell_quote(tmp_path)}"
+    # 用 trap 确保临时文件在命令结束后清理（即使管道中断）
+    return f"(trap 'rm -f {shell_quote(tmp_path)}' EXIT; cat {shell_quote(tmp_path)})"
 
 
 def safe_echo_lines_inline(lines: list, max_lines: int = 100) -> str:
