@@ -190,6 +190,46 @@ def run_agent(target, mode, config):
     
     console.print(f"\n[bold green]开始挖掘: {target} (模式: {mode})[/bold green]\n")
     
+    # ═══ Hermes Autopilot: 自动启动 Hermes 做前置侦察 + 加载记忆 ═══
+    hermes_pilot = None
+    try:
+        from hermes_autopilot import HermesAutopilot
+        hermes_pilot = HermesAutopilot(config)
+        
+        if hermes_pilot.is_available():
+            console.print(f"\n[bold magenta]⚡ Hermes 已就绪 — 自动协作模式[/bold magenta]")
+            
+            # 1. 读取 Hermes 跨会话记忆（上次挖这个目标的经验）
+            memory = hermes_pilot.recall(target)
+            if memory.get("memory"):
+                console.print(f"  [cyan]📝 Hermes 记忆已加载 ({len(memory['memory'])} chars)[/cyan]")
+                # 注入到 engine 的上下文中
+                engine.config.setdefault('_hermes_memory', memory.get('memory', ''))
+            if memory.get("relevant_skills"):
+                console.print(f"  [cyan]🎯 相关 Skill: {[s['name'] for s in memory['relevant_skills'][:5]]}[/cyan]")
+            if memory.get("last_scan_of_target"):
+                console.print(f"  [cyan]📊 上次扫描有记录，可增量对比[/cyan]")
+            
+            # 2. 让 Hermes 快速侦察（便宜模型，30秒出结果）
+            console.print(f"  [dim]Hermes 快速侦察中...[/dim]")
+            scout_result = hermes_pilot.scout(target, depth=1)
+            if scout_result.get("tech_stack"):
+                console.print(f"  [green]技术栈: {scout_result['tech_stack'][:5]}[/green]")
+            if scout_result.get("endpoints"):
+                console.print(f"  [green]端点: {len(scout_result['endpoints'])} 个[/green]")
+                # 把 Hermes 发现的端点预注入 findings
+                for ep in scout_result.get("endpoints", [])[:30]:
+                    if isinstance(ep, str) and ep.startswith("http"):
+                        findings["urls"].append(ep)
+            if scout_result.get("suggested_focus"):
+                console.print(f"  [bold]Hermes 建议重点: {scout_result['suggested_focus']}[/bold]")
+        else:
+            console.print(f"  [dim]Hermes 未安装，使用纯 Claude Code 模式[/dim]")
+    except ImportError:
+        pass
+    except Exception as e:
+        console.print(f"  [dim]Hermes 初始化跳过: {e}[/dim]")
+    
     # ═══ Phase 0: WAF 检测 + 资产发现 ═══
     console.print(f"\n{'='*50}")
     console.print("[bold cyan]Phase 0: 前置侦察[/bold cyan]")
@@ -589,75 +629,76 @@ def run_agent(target, mode, config):
     
     # ═══ Hermes 同步：把本次发现推给 Hermes 进化 ═══
     try:
-        from hermes_bridge import HermesBridge
-        import tempfile
-
-        hermes_config = config.get('hermes', {})
-        if hermes_config.get('enabled', True):
+        if hermes_pilot and hermes_pilot.is_available():
             console.print(f"\n{'='*50}")
-            console.print("[bold cyan]Hermes 同步 (自进化)[/bold cyan]")
+            console.print("[bold magenta]Hermes 进化同步[/bold magenta]")
             console.print(f"{'='*50}\n")
 
-            bridge = HermesBridge()
-
-            # 把本次确认的漏洞写成 Hermes 格式的 findings
+            # 1. 把确认的漏洞推给 Hermes 学习
             confirmed_vulns = [v for v in findings.get('vulnerabilities', [])
                              if v.get('validated') or v.get('deep_validated') or v.get('verified_4proof')]
 
             if confirmed_vulns:
-                # 构造 Hermes 格式的 JSON
-                hermes_findings = []
-                for v in confirmed_vulns:
-                    hermes_findings.append({
-                        "target": target,
-                        "vulnerability_class": v.get('type', 'unknown'),
-                        "endpoint": v.get('url', ''),
-                        "severity": v.get('severity', 'medium'),
-                        "evidence": v.get('detail', '')[:300],
-                        "is_novel": True,  # 让 Hermes 判断是否是新技巧
-                        "novelty_note": f"auto_hunt 确认: {v.get('type', '')}",
-                    })
-
-                # 写临时文件供 bridge 处理
-                tmp_findings = os.path.join(
-                    os.path.expanduser('~/.bai-agent'),
-                    f"hermes_sync_{target.replace('.','_')}.json"
-                )
-                os.makedirs(os.path.dirname(tmp_findings), exist_ok=True)
-                import json as _json
-                with open(tmp_findings, 'w', encoding='utf-8') as f:
-                    _json.dump(hermes_findings, f, ensure_ascii=False, indent=2)
-
-                # 检查自进化发现（是否有新技巧值得写入 skill）
-                discoveries = bridge._discover_novel_findings([{
-                    "target": target,
-                    "findings": hermes_findings,
-                }])
-
-                if discoveries:
-                    console.print(f"  [green]✓ 发现 {len(discoveries)} 个新技巧，推入 Hermes 审核队列[/green]")
-                    bridge._build_review_queue(discoveries)
+                evolve_result = hermes_pilot.evolve(target, confirmed_vulns)
+                new_skills = evolve_result.get("new_skills", 0)
+                if isinstance(new_skills, list):
+                    new_skills = len(new_skills)
+                if new_skills:
+                    console.print(f"  [green]✓ Hermes 学到 {new_skills} 个新技巧[/green]")
                 else:
                     console.print(f"  [dim]本次无新技巧（已有 skill 覆盖）[/dim]")
 
-                # 同步 skill（把已批准的合入 SKILL.md）
-                try:
-                    from sync_skills import sync_approved_to_skillmd
-                    merged = sync_approved_to_skillmd()
-                    if merged:
-                        console.print(f"  [green]✓ {merged} 条已批准技巧合入 SKILL.md[/green]")
-                except ImportError:
-                    pass
-                except Exception:
-                    pass
+            # 2. 让 Hermes 记住这次运行的关键信息
+            summary_note = (
+                f"[{datetime.now().strftime('%Y-%m-%d')}] 扫描 {target}: "
+                f"{len(findings.get('vulnerabilities',[]))} 个漏洞, "
+                f"{len(findings.get('subdomains',[]))} 子域名, "
+                f"{len(findings.get('urls',[]))} URL. "
+            )
+            if confirmed_vulns:
+                top_vulns = ", ".join([v.get('type','?') for v in confirmed_vulns[:3]])
+                summary_note += f"确认高危: {top_vulns}. "
 
-                console.print(f"  [dim]Hermes 发现文件: {tmp_findings}[/dim]")
-            else:
-                console.print(f"  [dim]无确认漏洞需同步到 Hermes[/dim]")
+            hermes_pilot.remember(summary_note)
+            console.print(f"  [cyan]📝 已写入 Hermes 持久记忆[/cyan]")
+
+            # 3. 同步已批准的 skill 到 SKILL.md
+            try:
+                from sync_skills import sync_approved_to_skillmd
+                merged = sync_approved_to_skillmd()
+                if merged:
+                    console.print(f"  [green]✓ {merged} 条已批准技巧合入 SKILL.md[/green]")
+            except Exception:
+                pass
+
+        elif hermes_pilot:
+            # Hermes 不可用，用本地 Bridge fallback
+            from hermes_bridge import HermesBridge
+            bridge = HermesBridge()
+            confirmed_vulns = [v for v in findings.get('vulnerabilities', [])
+                             if v.get('validated') or v.get('deep_validated') or v.get('verified_4proof')]
+            if confirmed_vulns:
+                hermes_findings = [{
+                    "target": target,
+                    "vulnerability_class": v.get('type', 'unknown'),
+                    "endpoint": v.get('url', ''),
+                    "severity": v.get('severity', 'medium'),
+                    "evidence": v.get('detail', '')[:300],
+                    "is_novel": True,
+                    "novelty_note": f"auto_hunt confirmed",
+                } for v in confirmed_vulns]
+
+                discoveries = bridge._discover_novel_findings([{
+                    "target": target, "findings": hermes_findings,
+                }])
+                if discoveries:
+                    bridge._build_review_queue(discoveries)
+                    console.print(f"  [green]✓ {len(discoveries)} 个新技巧进入审核队列[/green]")
+
     except ImportError:
-        pass  # hermes_bridge 不可用时静默跳过
+        pass
     except Exception as e:
-        console.print(f"  [dim]Hermes 同步异常（不影响主流程）: {e}[/dim]")
+        console.print(f"  [dim]Hermes 同步异常: {e}[/dim]")
 
     # 最终汇总
     console.print(f"\n{'='*50}")
