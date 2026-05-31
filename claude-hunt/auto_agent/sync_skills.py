@@ -329,3 +329,59 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+# ═══ 供 auto_hunt.py 直接调用的 API ═══
+
+def sync_approved_to_skillmd():
+    """
+    程序化接口：把所有 [APPROVED] 的 Hermes 发现合入 SKILL.md。
+    返回合入的条目数量。供 auto_hunt.py 自动调用。
+    """
+    if not HERMES_SKILLS.exists():
+        return 0
+
+    all_approved = {}
+    for skill_file in HERMES_SKILLS.glob("hermes-*.md"):
+        approved = extract_discoveries_by_status(skill_file, "APPROVED")
+        if approved:
+            name = skill_file.stem.replace("hermes-", "")
+            all_approved[name] = approved
+
+    if not all_approved:
+        return 0
+
+    total = sum(len(v) for v in all_approved.values())
+
+    if not SKILL_MD.exists():
+        return 0
+
+    skill_content = SKILL_MD.read_text(encoding="utf-8")
+
+    append_block = "\n\n## Hermes 自动发现 (合并于 {})\n\n".format(
+        datetime.now().strftime("%Y-%m-%d %H:%M")
+    )
+
+    for category, discoveries in all_approved.items():
+        append_block += f"### {category}\n"
+        for d in discoveries:
+            append_block += f"- [{d['vuln_class']}] {d['technique']} | poc:{d['evidence_hash']} | {d['target']}\n"
+        append_block += "\n"
+
+    # 避免重复追加
+    if "Hermes 自动发现" in skill_content:
+        last_block = skill_content.rfind("## Hermes 自动发现")
+        skill_content = skill_content[:last_block]
+
+    SKILL_MD.write_text(skill_content + append_block, encoding="utf-8")
+
+    log = load_sync_log()
+    log["hermes_to_claude"].append({
+        "time": datetime.now(timezone.utc).isoformat(),
+        "categories": list(all_approved.keys()),
+        "total_techniques": total,
+    })
+    save_sync_log(log)
+
+    return total

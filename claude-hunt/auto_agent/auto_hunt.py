@@ -587,6 +587,78 @@ def run_agent(target, mode, config):
     except Exception as e:
         console.print(f"  [dim]复盘异常（不影响主流程）: {e}[/dim]")
     
+    # ═══ Hermes 同步：把本次发现推给 Hermes 进化 ═══
+    try:
+        from hermes_bridge import HermesBridge
+        import tempfile
+
+        hermes_config = config.get('hermes', {})
+        if hermes_config.get('enabled', True):
+            console.print(f"\n{'='*50}")
+            console.print("[bold cyan]Hermes 同步 (自进化)[/bold cyan]")
+            console.print(f"{'='*50}\n")
+
+            bridge = HermesBridge()
+
+            # 把本次确认的漏洞写成 Hermes 格式的 findings
+            confirmed_vulns = [v for v in findings.get('vulnerabilities', [])
+                             if v.get('validated') or v.get('deep_validated') or v.get('verified_4proof')]
+
+            if confirmed_vulns:
+                # 构造 Hermes 格式的 JSON
+                hermes_findings = []
+                for v in confirmed_vulns:
+                    hermes_findings.append({
+                        "target": target,
+                        "vulnerability_class": v.get('type', 'unknown'),
+                        "endpoint": v.get('url', ''),
+                        "severity": v.get('severity', 'medium'),
+                        "evidence": v.get('detail', '')[:300],
+                        "is_novel": True,  # 让 Hermes 判断是否是新技巧
+                        "novelty_note": f"auto_hunt 确认: {v.get('type', '')}",
+                    })
+
+                # 写临时文件供 bridge 处理
+                tmp_findings = os.path.join(
+                    os.path.expanduser('~/.bai-agent'),
+                    f"hermes_sync_{target.replace('.','_')}.json"
+                )
+                os.makedirs(os.path.dirname(tmp_findings), exist_ok=True)
+                import json as _json
+                with open(tmp_findings, 'w', encoding='utf-8') as f:
+                    _json.dump(hermes_findings, f, ensure_ascii=False, indent=2)
+
+                # 检查自进化发现（是否有新技巧值得写入 skill）
+                discoveries = bridge._discover_novel_findings([{
+                    "target": target,
+                    "findings": hermes_findings,
+                }])
+
+                if discoveries:
+                    console.print(f"  [green]✓ 发现 {len(discoveries)} 个新技巧，推入 Hermes 审核队列[/green]")
+                    bridge._build_review_queue(discoveries)
+                else:
+                    console.print(f"  [dim]本次无新技巧（已有 skill 覆盖）[/dim]")
+
+                # 同步 skill（把已批准的合入 SKILL.md）
+                try:
+                    from sync_skills import sync_approved_to_skillmd
+                    merged = sync_approved_to_skillmd()
+                    if merged:
+                        console.print(f"  [green]✓ {merged} 条已批准技巧合入 SKILL.md[/green]")
+                except ImportError:
+                    pass
+                except Exception:
+                    pass
+
+                console.print(f"  [dim]Hermes 发现文件: {tmp_findings}[/dim]")
+            else:
+                console.print(f"  [dim]无确认漏洞需同步到 Hermes[/dim]")
+    except ImportError:
+        pass  # hermes_bridge 不可用时静默跳过
+    except Exception as e:
+        console.print(f"  [dim]Hermes 同步异常（不影响主流程）: {e}[/dim]")
+
     # 最终汇总
     console.print(f"\n{'='*50}")
     console.print("[bold green]运行结束[/bold green]")
