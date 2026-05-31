@@ -1016,3 +1016,84 @@ for f in result["defi_findings"]:
 5. 看别人的 disclosed reports（学他们的思路）
 6. 盯 scope 变化（新资产 = 第一个发现的人吃肉）
 ```
+
+
+
+---
+
+## AI 全自动挖洞工作流（含浏览器自动化）
+
+> 目标：你只打开 Claude Code，它自己注册账号、抓 Cookie、跑扫描、出报告。
+
+### 浏览器连接方式
+
+Claude Code 可以通过 Playwright 自动操作浏览器：
+- 自动打开目标网站
+- 自动注册/登录（用你配好的邮箱）
+- 自动抓取 Cookie/Token
+- 自动填入 config.yaml
+- 然后跑 auto_hunt.py
+
+```python
+# Claude Code 内部可以这样用：
+from browser_crawler import BrowserCrawler
+
+crawler = BrowserCrawler({
+    "headless": False,  # False = 你能看到浏览器在操作
+    "timeout": 30000,
+})
+
+# 自动登录并抓 Cookie
+cookies = await crawler.login_and_get_cookies(
+    url="https://target.com/login",
+    username="vlaudevv@wearehackerone.com",
+    password="你的密码",
+)
+
+# 自动填入配置
+config["session_monitor"]["cookie"] = cookies
+config["idor"]["cookie_a"] = cookies
+```
+
+### 双账号全自动流程
+
+```
+1. Claude Code 打开浏览器 → 用 H1 邮箱注册账号 A → 抓 Cookie A
+2. Claude Code 打开浏览器 → 用谷歌邮箱注册账号 B → 抓 Cookie B
+3. 自动写入 config.yaml
+4. 跑 auto_hunt.py（10 阶段全自动）
+5. IDOR 测试用双 Cookie 自动对比权限
+6. Evidence Store 自动保存证据
+7. 生成 H1 格式报告
+```
+
+### 你的账号信息
+
+| 用途 | 邮箱 | 说明 |
+|------|------|------|
+| H1 主账号 + 注册目标(账号A) | vlaudevv@wearehackerone.com | H1 要求用此邮箱注册 |
+| 第二账号(账号B) | 你的谷歌邮箱 | 用于 IDOR 双账号对比 |
+
+### 具体操作（你只需要做一次）
+
+对每个新 H1 目标：
+1. 用 H1 邮箱在目标网站注册账号 A
+2. 用谷歌邮箱注册账号 B
+3. 两个都登录，F12 → Application → Cookies → 复制整个 Cookie 字符串
+4. 填入 config.yaml 的 `idor.cookie_a` 和 `idor.cookie_b`
+5. 跑 `python auto_hunt.py --target xxx.com --mode auto`
+6. 等结果
+
+或者让 Claude Code 用 Playwright 自动完成 1-4 步（需要你提供密码）。
+
+### 为什么双账号这么重要
+
+| 单账号能出的 | 双账号能出的（赏金高 3-10 倍） |
+|-------------|-------------------------------|
+| SQLi, SSRF, RCE, XSS | **IDOR 水平越权**（占 H1 赏金 30%） |
+| 子域名接管, JWT | **垂直越权**（普通→Admin） |
+| 信息泄露, 密钥泄露 | **数据隔离绕过**（A 看 B 的数据） |
+| 0 元购, OTP 暴破 | **权限提升链**（读→写→删） |
+
+一个号只能打左边这些（竞争大、赏金低）。
+双号能打右边这些（竞争小、赏金高、你的工具全覆盖）。

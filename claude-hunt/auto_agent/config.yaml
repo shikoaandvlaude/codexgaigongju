@@ -61,10 +61,32 @@ session_monitor:
   expected_keyword: ""
   check_interval: 10
 
-# IDOR 多账号对比（填入双账号 Cookie 启用越权测试）
+# ============================================================
+# 双账号配置（IDOR 越权测试 — H1 出赏金率最高的方向）
+# 
+# 操作方式：
+#   账号 A: 用 vlaudevv@wearehackerone.com 在目标网站注册
+#   账号 B: 用你的谷歌邮箱在同一目标网站注册
+#   两个都登录 → 浏览器 F12 → Application → Cookies → 复制 session 值
+#
+# 工具会自动：
+#   1. 用 A 的 Cookie 访问 B 的资源（测水平越权）
+#   2. 用 B 的 Cookie 访问 A 的资源（双向验证）
+#   3. 对比响应体判断是否为公开数据
+#   4. 尝试 PUT/PATCH/DELETE 提权（读→写升级）
+# ============================================================
 idor:
-  cookie_a: ""
-  cookie_b: ""
+  cookie_a: ""  # vlaudevv@wearehackerone.com 注册的账号 Cookie
+  cookie_b: ""  # 谷歌邮箱注册的账号 Cookie
+
+# ============================================================
+# HackerOne 身份信息
+# ============================================================
+hackerone:
+  username: "vlaudevv"
+  email: "vlaudevv@wearehackerone.com"
+  # 注册目标网站时用这个邮箱（H1 要求用此邮箱注册）
+  # 第二个账号用你自己的谷歌邮箱
 
 # 目标配置
 target:
