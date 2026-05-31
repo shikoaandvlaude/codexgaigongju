@@ -3,6 +3,7 @@ from .recon import ReconPhase
 from .params import ParamPhase
 from .hunt import HuntPhase
 from .chain import ChainPhase
+from .critical_hunt import CriticalHuntPhase
 from .deep_hunt import DeepHuntPhase
 from .validate import ValidatePhase
 from .verify import VerifyPhase

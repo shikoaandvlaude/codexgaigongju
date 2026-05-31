@@ -36,6 +36,7 @@ from phases.recon import ReconPhase
 from phases.params import ParamPhase
 from phases.hunt import HuntPhase
 from phases.chain import ChainPhase
+from phases.critical_hunt import CriticalHuntPhase
 from phases.deep_hunt import DeepHuntPhase
 from phases.validate import ValidatePhase
 from phases.verify import VerifyPhase
@@ -281,6 +282,7 @@ def run_agent(target, mode, config):
         ParamPhase(engine, logger, redline, tracer, mode),
         HuntPhase(engine, logger, redline, tracer, mode),
         ChainPhase(engine, logger, redline, tracer, mode),
+        CriticalHuntPhase(engine, logger, redline, tracer, mode),
         DeepHuntPhase(engine, logger, redline, tracer, mode),
         ValidatePhase(engine, logger, redline, tracer, mode),
         VerifyPhase(engine, logger, redline, tracer, mode),
