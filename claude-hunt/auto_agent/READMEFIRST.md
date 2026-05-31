@@ -841,3 +841,95 @@ strix:
   docker: false          # 是否用 Docker 运行
   image: "ghcr.io/usestrix/strix:latest"
 ```
+
+
+
+---
+
+## Web3 智能合约审计（web3_auditor.py）
+
+> 赏金最高：Immunefi 单个 Critical 可达 $1M，普通 High 也有 $10K-$100K
+
+### 能检测什么
+
+| 漏洞类型 | 严重度 | 例子 |
+|---------|--------|------|
+| 重入攻击 | Critical | DAO Hack（$60M）、Cream Finance |
+| 预言机操控 | Critical | 闪电贷操控 Uniswap spot price |
+| ERC-4626 通胀 | Critical | $11M+ 损失（2025-2026） |
+| 未初始化代理 | Critical | Wormhole（$326M） |
+| 访问控制缺陷 | High | tx.origin 认证绕过 |
+| 闪电贷攻击面 | High | 单交易内状态操控 |
+| 整数溢出 | High | Solidity <0.8 unchecked |
+| delegatecall | Critical | 存储槽冲突/恶意实现 |
+| 前端运行(MEV) | Medium | 缺滑点保护被夹击 |
+| ERC20 返回值 | Medium | 某些代币 transfer 不 revert |
+
+### 工具依赖
+
+```bash
+# Slither（必装 — 80+ 检测器）
+pip install slither-analyzer
+
+# Mythril（可选 — 符号执行，更深但更慢）
+pip install mythril
+
+# Foundry（可选 — Fuzz 测试）
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
+
+# Etherscan API Key（审计已部署合约用）
+export ETHERSCAN_API_KEY=xxx
+```
+
+### 用法
+
+```python
+from web3_auditor import Web3Auditor
+
+auditor = Web3Auditor(engine)  # engine 有 LLM 时能做逻辑分析
+
+# 1. 审计本地合约文件
+result = auditor.audit_file("contracts/Vault.sol")
+print(f"发现: {result['total_findings']} 个 (Critical: {len(result['critical'])})")
+
+# 2. 审计 GitHub 仓库（一键）
+result = auditor.audit_repo("https://github.com/some-protocol/contracts")
+
+# 3. 审计已部署合约（自动拉 Etherscan verified 源码）
+result = auditor.audit_deployed("0x1234abcd...", chain="ethereum")
+# 支持: ethereum / bsc / polygon / arbitrum
+
+# 4. DeFi 协议深度审计（闪电贷/预言机/Vault 专项）
+result = auditor.defi_deep_audit("./protocol-contracts/")
+for f in result["defi_findings"]:
+    print(f"  [{f['severity']}] {f['type']}: {f['description'][:80]}")
+```
+
+### Web3 赏金平台
+
+| 平台 | 特点 | 赏金 |
+|------|------|------|
+| **Immunefi** | 最大 Web3 赏金平台，93% Critical 漏洞在这披露 | $1K-$1M+ |
+| **Sherlock** | 审计竞赛模式，固定奖金池 | $5K-$200K/竞赛 |
+| **Code4rena** | 审计竞赛，按发现分赏金 | $2K-$100K |
+| **HackenProof** | 偏交易所和基础设施 | $500-$50K |
+
+### 推荐工作流
+
+```
+1. 在 Immunefi 找有赏金的协议（按 TVL 排序）
+2. git clone 他们的合约仓库
+3. 跑 auditor.audit_repo() — 自动 Slither + 模式匹配 + LLM
+4. 重点看 Critical/High 发现
+5. 手动验证（写 Foundry PoC 或用 Tenderly fork 模拟）
+6. 提交到 Immunefi
+```
+
+### Immunefi 提交注意事项
+
+- 必须有可复现的 PoC（Foundry test 或 Tenderly fork）
+- 必须说明影响金额（"影响 $X TVL"）
+- 理论漏洞不收 — 必须证明可利用
+- 已知问题/设计权衡不算漏洞
+- 提交前检查 protocol 的 known issues 列表
