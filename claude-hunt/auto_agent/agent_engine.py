@@ -246,9 +246,47 @@ URL: {current_findings.get('urls', [])[:20]}
     
     def _get_experience_context(self) -> str:
         """
-        历史经验注入已禁用 — 防止错误偏见限制探索方向。
-        所有线索保留到验证阶段再判断，不提前过滤。
+        加载历史经验（只加载成功模式 + 有效 payload，不加载失败/浪费模式）。
+        避免"某次没出洞→下次跳过该方向"的错误偏见。
         """
+        parts = []
+
+        try:
+            from experience_learner import ExperienceLearner
+            learner = ExperienceLearner(self, self.config)
+            target = self.config.get("target", {}).get("domain", "")
+
+            # 只加载成功经验（patterns + effective_payloads），不加载 waste_patterns
+            relevant = []
+
+            # 1. 成功模式
+            for pattern in learner.patterns[-30:]:
+                if pattern.get("priority") in ("high", "medium"):
+                    relevant.append(f"- [{pattern.get('priority')}] {pattern.get('pattern')}")
+                    if pattern.get("action"):
+                        relevant.append(f"  动作: {pattern.get('action')}")
+
+            # 2. 有效 payload（历史验证过有效的）
+            if learner.effective_payloads:
+                relevant.append("\n历史有效 payload:")
+                for p in learner.effective_payloads[-5:]:
+                    relevant.append(f"  ✓ {p.get('type', '?')}: {p.get('payload', '')[:80]}")
+
+            # 3. 自动生成的 Skill（如果跟当前目标相关）
+            target_lower = target.lower()
+            for skill in learner.generated_skills[-5:]:
+                if skill.get("triggers"):
+                    if any(t.lower() in target_lower for t in skill["triggers"]):
+                        relevant.append(f"\n相关 Skill [{skill.get('name')}]:")
+                        for step in skill.get("checklist", [])[:5]:
+                            relevant.append(f"  → {step}")
+
+            if relevant:
+                return "=== 历史成功经验 ===\n" + "\n".join(relevant) + "\n=== 经验结束 ===\n"
+
+        except Exception:
+            pass
+
         return ""
     
     def get_request_count(self) -> int:

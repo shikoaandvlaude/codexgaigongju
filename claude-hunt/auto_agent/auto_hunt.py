@@ -539,52 +539,53 @@ def run_agent(target, mode, config):
     # 写日志尾
     logger.write_footer(findings)
     
-    # ═══ 自我进化：复盘学习（已禁用 — 防止错误偏见限制探索）═══
-    # ExperienceLearner 会把"某次没找到洞"记录为"此方向无效"，
-    # 导致下次跳过可能有洞的方向。暂时禁用，待手动验证经验质量后再启用。
-    # 如需启用，将 if False 改为 if True。
-    if False:
-        try:
-            learner = ExperienceLearner(engine, config)
-            console.print(f"\n{'='*50}")
-            console.print("[bold cyan]复盘学习 (Experience Learning)[/bold cyan]")
-            console.print(f"{'='*50}\n")
+    # ═══ 自我进化：复盘学习（只学成功经验，不学失败偏见）═══
+    try:
+        learner = ExperienceLearner(engine, config)
+        console.print(f"\n{'='*50}")
+        console.print("[bold cyan]复盘学习 (Experience Learning)[/bold cyan]")
+        console.print(f"{'='*50}\n")
 
-            # 获取线索摘要（如果有）
-            leads_summary_data = None
-            if lead_config.get('enabled', True):
-                try:
-                    lc = LeadCollector(config)
-                    leads_summary_data = lc.get_summary() if lc.leads else None
-                except Exception:
-                    pass
+        # 获取线索摘要（如果有）
+        leads_summary_data = None
+        if lead_config.get('enabled', True):
+            try:
+                lc = LeadCollector(config)
+                leads_summary_data = lc.get_summary() if lc.leads else None
+            except Exception:
+                pass
 
-            # 运行统计
-            import time as _time
-            run_stats = {
-                "total_requests": engine.get_request_count(),
-                "waf_type": waf_result.get("strategy", {}).get("name", "unknown") if 'waf_result' in dir() else "unknown",
-            }
+        # 运行统计
+        run_stats = {
+            "total_requests": engine.get_request_count(),
+            "waf_type": waf_result.get("strategy", {}).get("name", "unknown") if 'waf_result' in dir() else "unknown",
+        }
 
-            # 调用 LLM 做复盘
-            review_result = learner.post_hunt_review(
-                target=target,
-                findings=findings,
-                leads_summary=leads_summary_data,
-                run_stats=run_stats,
-            )
+        # 调用 LLM 做复盘
+        review_result = learner.post_hunt_review(
+            target=target,
+            findings=findings,
+            leads_summary=leads_summary_data,
+            run_stats=run_stats,
+        )
 
-            if review_result and not review_result.get("error"):
-                console.print(f"  [green]✓ 复盘完成[/green]")
-                new_patterns = review_result.get("new_patterns", [])
-                if new_patterns:
-                    console.print(f"  [bold]学到 {len(new_patterns)} 条新经验:[/bold]")
-                    for p in new_patterns[:5]:
-                        console.print(f"    [{p.get('priority', '?')}] {p.get('pattern', '')[:60]}")
-            else:
-                console.print(f"  [dim]复盘跳过（LLM 未返回有效结果）[/dim]")
-        except Exception as e:
-            console.print(f"  [dim]复盘异常（不影响主流程）: {e}[/dim]")
+        if review_result and not review_result.get("error"):
+            console.print(f"  [green]✓ 复盘完成[/green]")
+            new_patterns = review_result.get("new_patterns", [])
+            if new_patterns:
+                console.print(f"  [bold]学到 {len(new_patterns)} 条新经验:[/bold]")
+                for p in new_patterns[:5]:
+                    console.print(f"    [{p.get('priority', '?')}] {p.get('pattern', '')[:60]}")
+
+            # 显示经验库统计
+            stats = learner.get_experience_stats()
+            console.print(f"\n  经验库: {stats['total_patterns']} 条模式 / "
+                         f"{stats['generated_skills']} 个 Skill / "
+                         f"{stats['effective_payloads']} 个有效payload")
+        else:
+            console.print(f"  [dim]复盘跳过（LLM 未返回有效结果）[/dim]")
+    except Exception as e:
+        console.print(f"  [dim]复盘异常（不影响主流程）: {e}[/dim]")
     
     # 最终汇总
     console.print(f"\n{'='*50}")
