@@ -157,6 +157,47 @@ claude-hunt/auto_agent/
 
 ---
 
+## 了解工具详情（按需阅读）
+
+当你需要深入了解某个模块时，阅读对应文件：
+
+| 想了解什么 | 看哪个文件 |
+|-----------|-----------|
+| 整体架构 + 全部模块列表 + 安装方法 | `claude-hunt/auto_agent/READMEFIRST.md` |
+| 10阶段流水线每个阶段做什么 | `claude-hunt/auto_agent/phases/` 目录下各 .py 文件的 docstring |
+| auto_hunt 主流程逻辑 | `claude-hunt/auto_agent/auto_hunt.py` |
+| LLM 决策引擎怎么工作 | `claude-hunt/auto_agent/agent_engine.py` |
+| 限速/红线/安全策略 | `claude-hunt/auto_agent/config.yaml` |
+| 资产搜索引擎 API 用法 | `claude-hunt/auto_agent/asset_engines.py` docstring |
+| 权限矩阵怎么建 | `claude-hunt/auto_agent/authz_matrix.py` docstring |
+| 证据怎么存/报告怎么生成 | `claude-hunt/auto_agent/evidence_store.py` docstring |
+| 项目评分维度和算法 | `claude-hunt/auto_agent/project_fit_scorer.py` docstring |
+| Scope 怎么拉/怎么判断 | `claude-hunt/auto_agent/scope_resolver.py` docstring |
+| Hermes 自进化怎么工作 | `claude-hunt/auto_agent/hermes_autopilot.py` docstring |
+| Shannon/PentAGI/Strix 怎么调 | 各 `*_bridge.py` 文件 docstring |
+| Web3 合约审计能力 | `claude-hunt/auto_agent/web3_auditor.py` docstring |
+| 浏览器自动化/SPA爬虫 | `claude-hunt/auto_agent/browser_crawler.py` docstring |
+| 红队工具（内网/横向/提权） | `claude-hunt/auto_agent/redteam_toolkit.py` / `kali_bridge.py` |
+| SKILL.md（漏洞知识库） | `claude-hunt/SKILL.md` — 1200+ 行 BB 方法论 |
+| Bug Bounty 方法论速查 | `claude-hunt/SKILL.md` 的 Phase 1-3 部分 |
+| 漏洞模式/Payload 速查 | `claude-hunt/SKILL.md` 的 VULNERABILITY HUNTING CHECKLISTS |
+| 组链规则（A→B→C） | `claude-hunt/auto_agent/phases/chain.py` |
+| 高危专项（SSTI/RCE/支付） | `claude-hunt/auto_agent/phases/critical_hunt.py` |
+| 经验自进化系统 | `claude-hunt/auto_agent/experience_learner.py` |
+| Hermes Bridge 四层架构 | `claude-hunt/auto_agent/hermes_bridge.py` |
+
+### 快速上手顺序（如果第一次看这个项目）
+
+```
+1. 先看本文件 CLAUDE.md（你正在看）
+2. 再看 claude-hunt/auto_agent/READMEFIRST.md（详细文档）
+3. 看 config.yaml 了解配置项
+4. 看 auto_hunt.py 了解主流程
+5. 按需看各模块 docstring
+```
+
+---
+
 ## 记住
 
 - 你不是扫描器，你是赏金猎人
