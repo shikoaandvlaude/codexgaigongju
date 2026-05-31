@@ -338,3 +338,322 @@ print(f"总得分: {rr.calculate_score()['total']}")
 | BloodHound | AD 路径分析 | github.com/BloodHoundAD/BloodHound |
 | Impacket | Windows 协议工具 | github.com/fortra/impacket |
 | RedTeam-Tools | 红队工具大全 | github.com/A-poc/RedTeam-Tools |
+
+
+
+---
+
+## SRC/赏金自动化挖掘（auto_hunt.py）
+
+> 这是本工具的核心功能 — AI 驱动的全自动 SRC 漏洞挖掘。
+
+### 快速开始（挖 SRC）
+
+```bash
+# 1. 安装依赖
+pip install -r requirements.txt
+
+# 2. 配置
+cp config.yaml.example config.yaml
+# 填入 LLM API Key（DeepSeek/OpenAI）
+# 填入目标域名、Cookie（如果要测登录态接口）
+
+# 3. 一键开挖
+python auto_hunt.py --target example.com --mode auto
+
+# 4. 半自动模式（每步确认）
+python auto_hunt.py --target example.com --mode semi
+```
+
+### 10 阶段流水线
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                         SRC 自动化挖掘流水线                                │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│  ① Recon           ② Params          ③ ExtendedScan                       │
+│  ┌──────────┐     ┌──────────┐     ┌──────────────┐                       │
+│  │subfinder │     │ParamSpider│     │子域名接管验证 │                       │
+│  │assetfinder│     │gf 6模式  │     │S3/Azure枚举  │                       │
+│  │katana爬虫│     │GraphQL发现│     │SPA浏览器爬虫  │                       │
+│  │JS密钥提取│     │arjun探测  │     │JS深度分析    │                       │
+│  │tech指纹  │     │JSON字段   │     │CVE情报匹配   │                       │
+│  └──────────┘     └──────────┘     │OOB回调准备   │                       │
+│       │                │            └──────────────┘                       │
+│       ▼                ▼                   │                               │
+│  ④ Hunt            ⑤ Chain           ⑥ CriticalHunt                       │
+│  ┌──────────┐     ┌──────────┐     ┌──────────────┐                       │
+│  │nuclei扫描│     │9条组链规则│     │SSTI/命令注入  │                       │
+│  │XSS(dalfox)│    │A→B→C自动 │     │SQLi深度(盲注) │                       │
+│  │CORS+cred │     │AI辅助链  │     │密码重置接管   │                       │
+│  │SSRF检测  │     │           │     │0元购/负数金额 │                       │
+│  │JWT审计   │     │           │     │垂直越权      │                       │
+│  │开放重定向│     │           │     │批量数据泄露   │                       │
+│  │竞态/IDOR │     │           │     │OTP暴破       │                       │
+│  └──────────┘     └──────────┘     └──────────────┘                       │
+│       │                │                   │                               │
+│       ▼                ▼                   ▼                               │
+│  ⑦ DeepHunt        ⑧ Validate        ⑨ Verify         ⑩ Report           │
+│  ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐         │
+│  │httpx Fuzz│     │7问门控   │     │四证齐全   │     │SRC格式   │         │
+│  │IDOR系统性│     │真假判定   │     │代码路径   │     │H1/补天   │         │
+│  │业务逻辑  │     │           │     │运行时证明 │     │自动生成   │         │
+│  │403绕过   │     │           │     │反证检查   │     │           │         │
+│  └──────────┘     └──────────┘     └──────────┘     └──────────┘         │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 各阶段详解
+
+#### ① Recon（信息搜集）
+- **subfinder + assetfinder** — 多源子域名枚举
+- **httpx -tech-detect** — 存活探测 + 技术栈指纹
+- **katana** — 主动爬虫，能渲染 JS（SPA 应用必备）
+- **gau + waybackurls** — 历史 URL 收集（500+）
+- **JS 文件提取** — 从 JS bundle 中 grep API 端点和硬编码密钥
+
+#### ② Params（参数发现）
+- **ParamSpider** — 被动参数发现
+- **gf** — 6 种漏洞模式匹配（xss/ssrf/sqli/redirect/idor/lfi）
+- **GraphQL 端点发现** — 7 种路径探测 + introspection
+- **arjun** — GET/POST 双模式主动参数探测
+- **JSON body 字段** — 从 API 响应中提取可注入字段名
+
+#### ③ ExtendedScan（扩展扫描）
+- **子域名接管** — CNAME 悬挂 + 多云服务商指纹匹配
+- **S3/Azure/GCP Bucket** — 14 种命名模式枚举 + 可列目录检测
+- **Playwright SPA 爬虫** — 拦截 XHR/Fetch 发现隐藏 API
+- **JS 深度分析** — 端点/密钥/DOM XSS Sink 全量提取
+- **CVE 情报匹配** — 根据技术栈自动关联已知漏洞
+- **Interactsh OOB** — 为后续盲测试准备带外回调域名
+
+#### ④ Hunt（漏洞挖掘）
+- **Nuclei** — 高中危模板扫描
+- **XSS** — dalfox 自动检测
+- **CORS** — 带 credentials 测试
+- **SSRF** — 云 metadata + 内网 IP 绕过（6 种）
+- **JWT** — alg:none / HS256 弱密钥 / kid 注入
+- **SQLi** — error-based 快速探测 + 时间盲注验证（**不用 sqlmap**）
+- **开放重定向** — 6 种绕过 payload
+- **子域名接管验证** — CNAME 确认
+- **竞态条件** — AI 筛选写操作接口 + 并发测试
+- **IDOR** — 双账号响应体 hash 对比
+
+#### ⑤ Chain（自动组链）
+把多个低危组合成高危：
+| 链 | 组合 | 级别 |
+|---|---|---|
+| Open Redirect → OAuth → ATO | 重定向 + OAuth redirect_uri | Critical |
+| SSRF → Cloud Metadata → RCE | SSRF + IAM credential | Critical |
+| XSS → Cookie Theft → ATO | XSS + 无 HttpOnly | Critical |
+| CORS + Credentials → Data Theft | CORS reflect + credentials | High |
+| IDOR Read → Write/Delete | 读越权 → PUT/PATCH/DELETE | Critical |
+| GraphQL Introspection → PII | schema + 敏感字段 | High |
+| JWT Weak → Admin Forge | alg:none/弱密钥 → 伪造 | Critical |
+| Subdomain Takeover → Session | 接管 + cookie scope | High |
+| Secret Leak → Access | 密钥 → 验证可用性 | High |
+
+#### ⑥ CriticalHunt（高危专项）
+- **SSTI** — 6 种模板引擎 payload（{{7*7}}, ${7*7}, <%=7*7%>...）
+- **命令注入** — ;id / |id / $(id) / 反引号 / %0a / ||
+- **文件上传** — 10 种上传路径探测
+- **SQLi POST JSON** — API JSON body 注入（WAF 通常不查）
+- **SQLi Cookie** — Cookie 参数注入（90% WAF 不管）
+- **密码重置 Host 注入** — 重置链接发到攻击者域名
+- **重置 Token 泄露** — 响应中直接暴露 token
+- **OTP 无限速** — 验证码接口暴力枚举
+- **0 元购** — price=0 / amount=-1
+- **POST 金额篡改** — AI 识别下单接口
+- **垂直越权** — 普通 cookie 打 16 种 admin 路径
+- **批量数据泄露** — page_size=10000 无限制
+
+#### ⑦ DeepHunt（深度挖掘）
+- 自研 httpx 异步引擎做精细化 Fuzz
+- 响应差异检测（基线对比）
+- 系统性 IDOR 测试（ID 遍历 + 方法切换）
+- 业务逻辑竞态（真实状态对比）
+- 403 绕过（Header 变异）
+
+#### ⑧⑨⑩ Validate → Verify → Report
+- **7 问门控** — 确认漏洞真实可利用
+- **四证齐全** — 代码路径/运行时/证据/反证
+- **自动生成报告** — 适配 HackerOne / 补天 / 漏洞盒子格式
+
+---
+
+### 防封 IP 策略
+
+```yaml
+# config.yaml 限速配置
+rate_limit:
+  requests_per_second: 2      # 默认 2 req/s（安全值）
+  max_concurrent: 2
+  delay_between_phases: 3     # 每步基础延迟 3s
+  max_total_requests: 500     # 单次最大请求数
+```
+
+**内置防封机制：**
+- 每个请求额外 0.3~1.5s **随机抖动**（防固定间隔指纹）
+- 每步之间 3~5.5s **随机间隔**（不是固定值）
+- WAF 检测到后**自动降速**（wafw00f 识别 → 调整策略）
+- **sqlmap 完全禁用** — 用手动时间盲注替代（单请求验证）
+- nuclei 带 `-rate-limit 5 -c 3`
+- httpx 带 `-rate-limit 10`
+- 连续 5 个 403 → 自动停止（红线机制）
+- IP 被封检测 → 自动暂停
+
+---
+
+### config.yaml 关键配置
+
+```yaml
+# LLM（必填）
+llm:
+  api_key: "sk-你的Key"
+  base_url: "https://api.deepseek.com/v1"
+  model: "deepseek-chat"
+
+# 目标（必填）
+target:
+  domain: "example.com"
+  bounty_platform: "cn_src"  # hackerone / cn_src
+
+# IDOR 双账号（推荐）
+idor:
+  cookie_a: "session=账号A的cookie"
+  cookie_b: "session=账号B的cookie"
+
+# Session 监控（推荐）
+session_monitor:
+  cookie: "你的登录cookie"
+  check_url: "https://example.com/api/me"
+  check_interval: 10
+
+# 深度挖掘
+deep_hunt:
+  enable_fuzz: true
+  enable_idor: true
+  enable_bizlogic: true
+  enable_auth_bypass: true
+
+# 浏览器爬虫（可选）
+browser_crawler:
+  enabled: true
+  max_depth: 3
+  timeout: 30000
+```
+
+---
+
+### 前置工具安装（SRC 挖洞用）
+
+```bash
+# ═══ 必装（Go 工具）═══
+go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+go install github.com/projectdiscovery/httpx/cmd/httpx@latest
+go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+go install github.com/projectdiscovery/katana/cmd/katana@latest
+go install github.com/tomnomnom/assetfinder@latest
+go install github.com/tomnomnom/gf@latest
+go install github.com/lc/gau/v2/cmd/gau@latest
+go install github.com/tomnomnom/waybackurls@latest
+go install github.com/hahwul/dalfox/v2@latest
+go install github.com/tomnomnom/anew@latest
+
+# ═══ 必装（Python 工具）═══
+pip install paramspider arjun trufflehog
+
+# ═══ 推荐（OOB 回调）═══
+go install github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest
+
+# ═══ 推荐（SPA 爬虫）═══
+pip install playwright && playwright install chromium
+
+# ═══ gf patterns（漏洞模式匹配）═══
+mkdir -p ~/.gf
+git clone https://github.com/1ndianl33t/Gf-Patterns ~/.gf
+```
+
+---
+
+### 使用示例
+
+#### 最简用法（全自动）
+```bash
+export DEEPSEEK_API_KEY=sk-xxx
+python auto_hunt.py --target example.com --mode auto
+```
+
+#### 带 Cookie 测登录态（推荐）
+```yaml
+# config.yaml
+session_monitor:
+  cookie: "JSESSIONID=abc123; token=xyz"
+  check_url: "https://example.com/api/user/info"
+idor:
+  cookie_a: "session=用户A"
+  cookie_b: "session=用户B"
+```
+```bash
+python auto_hunt.py --target example.com --mode auto
+```
+
+#### 国内 SRC（补天/漏洞盒子）
+```yaml
+target:
+  domain: "xxx.com"
+  bounty_platform: "cn_src"  # 使用国内 SRC 过滤规则（更宽松）
+```
+
+#### APP 类目标
+```yaml
+target:
+  domain: "com.example.app"  # 包名
+app:
+  apk_path: "/path/to/app.apk"
+  har_path: "/path/to/traffic.har"
+```
+
+---
+
+### 输出文件
+
+```
+~/Desktop/doing_2026-05-31.md    ← 实时操作日志
+~/.bai-agent/leads/              ← 线索收集
+~/.bai-agent/checkpoints/        ← 断点（可恢复）
+~/.bai-agent/experience/         ← 经验库（已禁用自动学习）
+```
+
+---
+
+### 常见问题
+
+**Q: 跑一半被封了怎么办？**
+A: 工具会自动检测（连续 403/触发验证码）并暂停。恢复方法：
+1. 换 IP（代理/VPN）
+2. 降低 `requests_per_second` 到 1
+3. 重新运行，自动从断点恢复
+
+**Q: 怎么提高出洞率？**
+A: 
+1. 一定要配双账号（IDOR 是出洞率最高的类型）
+2. 配 session cookie（很多漏洞在登录态才能测到）
+3. 用 `cn_src` 平台模式（国内规则更宽松）
+4. 跑完看线索文件（`~/.bai-agent/leads/`），手动深挖 AI 标记的高价值线索
+
+**Q: 不想跑全部阶段？**
+A: 用半自动模式 `--mode semi`，每个阶段前会问你是否跳过。
+
+**Q: 支持哪些 LLM？**
+A: DeepSeek（默认）/ OpenAI / 任何 OpenAI 兼容接口。设置环境变量：
+```bash
+export DEEPSEEK_API_KEY=sk-xxx        # DeepSeek
+# 或
+export OPENAI_API_KEY=sk-xxx          # OpenAI
+export LLM_BASE_URL=https://xxx/v1    # 自定义接口
+export LLM_MODEL=gpt-4o               # 自定义模型
+```
