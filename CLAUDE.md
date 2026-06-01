@@ -293,3 +293,62 @@ unveilr /path/to/__APP__.wxapkg -o ./output/
 - 每个发现都问：攻击者能干什么？影响谁？怎么复现？
 - 组链思维：A + B = C（低 + 低 = 高）
 - 挖不到就换目标，别死磕
+
+
+
+---
+
+## Fireteam 并行攻击模式（学自 Redamon）
+
+> Redamon 的核心优势：3 个 AI 同时打不同方向。你不需要装 Redamon，Claude Code 自己就能做。
+
+### 思路
+
+不要串行跑完 10 阶段再看结果。对同一个目标，同时启动多条攻击线：
+
+```
+目标: target.com
+
+线程 A（快速覆盖）: Strix 扫全面 → 5分钟出结果
+线程 B（深度挖掘）: auto_hunt 10阶段 → 20分钟
+线程 C（权限矩阵）: authz_matrix 双账号对比 → 10分钟
+
+三条线的结果汇总 → Chain 组链 → Shannon 验证 → 出报告
+```
+
+### Claude Code 怎么并行
+
+你不需要改代码。直接告诉 Claude Code：
+
+```
+"对 target.com 做并行测试：
+1. 先用 strix 快扫
+2. 同时跑 auto_hunt
+3. 同时让 hermes 做侦察
+最后汇总所有结果组链"
+```
+
+### 什么时候用并行
+
+- 护网限时赛 → 必须并行（时间紧）
+- 新目标初次测试 → 并行覆盖面广
+- 已有线索深入 → 串行（一步步验证）
+
+---
+
+## 参考项目（当知识库用，不集成代码）
+
+| 项目 | 怎么用 | 地址 |
+|------|--------|------|
+| Redamon | 学它的并行攻击 + 知识图谱思想 | github.com/samugit83/redamon |
+| Red-Teaming-Toolkit (infosecn1nja) | 红队工具百科，按 ATT&CK 分类 | github.com/infosecn1nja/Red-Teaming-Toolkit |
+| RedTeam-Tools (A-poc) | 工具清单+用法说明 | github.com/A-poc/RedTeam-Tools |
+| RedTeam_BlueTeam_HW | 护网资料集合（中文） | github.com/Mr-xn/RedTeam_BlueTeam_HW |
+
+### 从这些项目学到的（已融入工具）
+
+- Redamon 的 Fireteam 并行 → 你的 Hermes + Strix + auto_hunt 三线并行
+- Redamon 的 Phase 管理 → 你的 10 阶段流水线
+- Redamon 的 MCP 工具服务器 → 你的 Burp MCP + Kali Bridge
+- Red-Teaming-Toolkit 的分类 → 你的 redteam_toolkit.py 覆盖全部类别
+- RedTeam_BlueTeam_HW 的护网知识 → 你的 CLAUDE.md 护网章节
