@@ -207,6 +207,73 @@ claude-hunt/auto_agent/
 | 经验自进化系统 | `claude-hunt/auto_agent/experience_learner.py` |
 | Hermes Bridge 四层架构 | `claude-hunt/auto_agent/hermes_bridge.py` |
 
+---
+
+## 护网/HVV 红队模式
+
+护网场景跟 SRC 不同：**万级资产、限时、拿权限=高分**。
+
+### 护网快速出分流程
+
+```
+1. 端口扫描 → masscan/nmap 快扫全端口
+2. 登录页识别 → httpx -title 筛含"登录/login"的
+3. 弱口令快测 → fast_credential_scan.find_login_pages() + test_default_creds()
+4. CMS 指纹 → nuclei -tags cve,default-login
+5. Redis/数据库未授权 → fast_credential_scan.scan_redis_unauth()
+6. 小程序反编译 → miniapp_auditor.audit_wxapkg() → 提取 API + 密钥
+7. 有权限后 → 红队模块横向（redteam_toolkit/kali_bridge）
+```
+
+### 护网专用工具
+
+| 模块 | 用途 |
+|------|------|
+| `fast_credential_scan.py` | 批量找登录页 + 测默认口令 + Redis 未授权 |
+| `miniapp_auditor.py` | 小程序 wxapkg 反编译 → API/密钥/加密算法 |
+| `cnvd_scanner.py` | 国产 OA/CMS CVE 批量扫 |
+| `redteam_toolkit.py` | 横向/AD/提权/C2 |
+| `kali_bridge.py` | SSH 远程调 Kali 工具 |
+
+### Burp Suite MCP 配置
+
+Claude Code 可以通过 MCP 连接 Burp Suite 分析流量：
+
+```
+1. Burp Suite → Extensions → BApp Store → 搜 "MCP" → 安装
+2. Extension 设置里开启 SSE server (默认 127.0.0.1:9876)
+3. Claude Code 通过 MCP 协议连接：
+   - 读取 Proxy History（所有抓包请求）
+   - 分析请求/响应找漏洞
+   - 发送请求到 Repeater
+   - 触发 Scanner
+```
+
+官方插件: https://portswigger.net/bappstore/9952290f04ed4f628e624d0aa9dccebc
+
+### 小程序逆向工具
+
+```bash
+# wxapkg 反编译（三选一）
+pip install unveilr                          # Python 版
+go install github.com/pkoukk/wxapkg@latest   # Go 版
+npm install -g wxappUnpacker                  # Node 版
+
+# 使用
+unveilr /path/to/__APP__.wxapkg -o ./output/
+# 然后用 miniapp_auditor 分析
+```
+
+### 护网注意事项（防被溯源）
+
+- 用代理池/VPN，不要裸 IP 打
+- 不要改/删目标数据（只读测试）
+- 拿到权限立刻截图留证，不要深入翻数据
+- 弱口令只测 Top 5-10 个，不暴力
+- 所有操作留日志（工具自动记录）
+
+---
+
 ### 快速上手顺序（如果第一次看这个项目）
 
 ```
