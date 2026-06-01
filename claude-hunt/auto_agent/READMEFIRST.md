@@ -1253,3 +1253,85 @@ print(report)
 | **reconFTW** | BB recon 流水线串联 |
 | **MobSF** | 移动端分析报告结构 |
 | **mitmproxy** | 流量捕获和证据沉淀 |
+
+
+
+---
+
+## 红队隐蔽 & 反溯源参考资料
+
+> 以下是参考学习资料，帮助理解蓝队怎么追踪红队、红队怎么隐蔽。
+
+### 一、反取证 / 痕迹清理
+
+| 工具/资料 | 说明 | 地址 |
+|-----------|------|------|
+| Forensia | 后渗透反取证工具 | https://github.com/PaulNorman01/Forensia |
+| Invoke-Phant0m | 杀Windows事件日志进程 | https://github.com/hlldz/Invoke-Phant0m |
+| MoonWalk | Linux后渗透痕迹清理 | https://github.com/mufeedvh/moonwalk |
+| EventCleaner | Windows事件日志选择性删除 | https://github.com/QAX-A-Team/EventCleaner |
+
+### 二、C2 隐蔽通信
+
+| 工具/资料 | 说明 | 地址 |
+|-----------|------|------|
+| RedGuard | C2前置流量控制(避开蓝队/EDR) | https://github.com/wikiZ/RedGuard |
+| GraphStrike | CS走Microsoft Graph API | https://github.com/RedSiege/GraphStrike |
+| Sliver | 开源C2(mTLS/HTTP/DNS) | https://github.com/BishopFox/sliver |
+| Havoc | 现代C2框架 | https://github.com/HavocFramework/Havoc |
+| Mythic | 跨平台C2(Docker) | https://github.com/its-a-feature/Mythic |
+| Merlin | Go C2(HTTP2/QUIC/DNS) | https://github.com/Ne0nd0g/merlin |
+| Domain Fronting教程 | Azure域前置隐藏C2 | https://thegreycorner.com/2025/05/07/azure-service-C2-forwarding.html |
+| C2 Redirectors教程 | 重定向器搭建 | https://docs.redteamleaders.com/red-team-infrastructure/c2-redirectors-part.1 |
+
+### 三、蜜罐识别
+
+| 工具/资料 | 说明 | 地址 |
+|-----------|------|------|
+| awesome-honeypots | 蜜罐指纹特征集合 | https://github.com/paralax/awesome-honeypots |
+| Shodan honeyscore | API查蜜罐概率(0-1) | shodan host x.x.x.x |
+| 识别方法 | 全端口开放/banner太标准=蜜罐 | - |
+
+### 四、免杀 / EDR绕过
+
+| 工具/资料 | 说明 | 地址 |
+|-----------|------|------|
+| ScareCrow | Payload绕EDR | https://github.com/optiv/ScareCrow |
+| Freeze | 挂起进程+syscall绕EDR | https://github.com/optiv/Freeze |
+| Shhhloader | Shellcode多种绕过 | https://github.com/icyguider/Shhhloader |
+| ProtectMyTooling | 链式免杀打包 | https://github.com/mgeeky/ProtectMyTooling |
+| ThreatCheck | 找Defender标记字节 | https://github.com/rasta-mouse/ThreatCheck |
+
+### 五、流量伪装
+
+| 工具/资料 | 说明 | 地址 |
+|-----------|------|------|
+| Chameleon | 规避代理分类检测 | https://github.com/mdsecactivebreach/Chameleon |
+| SourcePoint | 隐蔽CS Profile生成 | https://github.com/Tylous/SourcePoint |
+| C2concealer | 随机化C2 profile | https://github.com/FortyNorthSecurity/C2concealer |
+| skyhook | 混淆HTTP传输绕IDS | https://github.com/blackhillsinfosec/skyhook |
+
+### 六、红队OPSEC知识库
+
+| 资料 | 说明 | 地址 |
+|------|------|------|
+| OPSEC Essentials | 操作安全基础 | https://github.com/BushidoUK/Open-source-tools-for-CTI/blob/master/OPSEC%20essentials.md |
+| RedELK | 红队SIEM(监控蓝队追踪) | https://github.com/outflanknl/RedELK |
+| RedEye | 红队可视化(CISA) | https://github.com/cisagov/RedEye |
+| Red Team Leaders | 红队基础设施全指南 | https://docs.redteamleaders.com/ |
+| AD-Attack-Defense | 域攻防手册 | https://github.com/infosecn1nja/AD-Attack-Defense |
+
+### 护网OPSEC要点(速查)
+
+```
+1. 通过代理/VPN，不暴露真实IP
+2. 每个目标不同代理出口
+3. C2走域前置/CDN/云函数
+4. 改User-Agent和请求指纹
+5. 不在目标留本机特征(hostname/用户名)
+6. 工具用完即删
+7. 不要固定时间高频操作
+8. payload每次新生成(hash不重复)
+9. 先查目标honeyscore
+10. 操作在隔离VM/Docker中
+```
